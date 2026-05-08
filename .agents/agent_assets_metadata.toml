@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "AClkbSmmBCWGp6-tgHEgi"
+uri = "file://plan.md"
+type = "text"
+title = "Billionaire AI — Complete Development Roadmap"
