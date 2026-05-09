@@ -96,19 +96,30 @@ interface CandlestickRow {
   error?:            string;
 }
 
+interface BulkDealItem {
+  symbol:      string;
+  client_name: string;
+  trade_type:  string;
+  quantity:    number;
+  trade_price: number;
+  exchange:    string;
+}
+
 interface StockPageData {
-  quote:        QuoteRow | null;
-  fundamentals: FundRow | null;
-  technical:    TechRow | null;
-  news:         NewsRow[];
-  options:      OptionsRow | null;
-  fiiDii:       FiiRow | null;
-  reddit:       RedditRow | null;
-  trends:       TrendsRow | null;
-  youtube:      YouTubeRow | null;
-  earnings:     EarningsRow | null;
-  bollinger:    BollingerRow | null;
-  candlestick:  CandlestickRow | null;
+  quote:          QuoteRow | null;
+  fundamentals:   FundRow | null;
+  technical:      TechRow | null;
+  news:           NewsRow[];
+  options:        OptionsRow | null;
+  fiiDii:         FiiRow | null;
+  reddit:         RedditRow | null;
+  trends:         TrendsRow | null;
+  youtube:        YouTubeRow | null;
+  earnings:       EarningsRow | null;
+  bollinger:      BollingerRow | null;
+  candlestick:    CandlestickRow | null;
+  bulkDealsData:  { deals: BulkDealItem[]; total: number; note?: string } | null;
+  blockDealsData: { deals: BulkDealItem[]; total: number; note?: string } | null;
 }
 
 // ─── Chart periods ────────────────────────────────────────────────────────────
@@ -1082,6 +1093,130 @@ function InstitutionalCard({ fiiDii, options }: { fiiDii: FiiRow | null; options
   );
 }
 
+// ─── Smart Money Card (Bulk & Block Deals) ────────────────────────────────────
+
+function SmartMoneyCard({ bulkDealsData, blockDealsData, ticker }: {
+  bulkDealsData:  { deals: BulkDealItem[]; total: number; note?: string } | null;
+  blockDealsData: { deals: BulkDealItem[]; total: number; note?: string } | null;
+  ticker: string;
+}) {
+  const [tab, setTab] = useState<'bulk' | 'block'>('bulk');
+
+  const sym = ticker.replace(/\.(NS|BO)$/i, '').toUpperCase();
+  const stockBulk  = (bulkDealsData?.deals  ?? []).filter(d => (d.symbol ?? '').toUpperCase() === sym);
+  const stockBlock = (blockDealsData?.deals ?? []).filter(d => (d.symbol ?? '').toUpperCase() === sym);
+  const hasAnyDeals = stockBulk.length > 0 || stockBlock.length > 0;
+  const activeDeals = tab === 'bulk' ? stockBulk : stockBlock;
+
+  function fmtQty(n: number) {
+    if (!n || n === 0) return '—';
+    if (n >= 10_000_000) return `${(n / 10_000_000).toFixed(2)} Cr`;
+    if (n >= 100_000)    return `${(n / 100_000).toFixed(2)} L`;
+    if (n >= 1_000)      return `${(n / 1_000).toFixed(1)} K`;
+    return n.toLocaleString('en-IN');
+  }
+
+  return (
+    <Card title="Smart Money — Block & Bulk Deals" icon={Building2}>
+      {!hasAnyDeals ? (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">
+            No institutional bulk or block transactions recorded for <span className="font-semibold text-foreground">{sym}</span> today.
+          </p>
+          {(bulkDealsData === null && blockDealsData === null) && (
+            <p className="text-[10px] text-amber-500/80">
+              NSE data currently unavailable — check back during market hours (9:15 AM – 3:30 PM IST).
+            </p>
+          )}
+          <p className="text-[10px] text-muted-foreground/60 leading-snug">
+            Bulk deals = single trades ≥ 0.5% of listed shares. Block deals execute in the 9:15–9:50 AM special window. Data resets at market open each day.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {/* Tabs */}
+          <div className="flex gap-1.5">
+            {([
+              { key: 'bulk',  label: 'Bulk Deals',  count: stockBulk.length  },
+              { key: 'block', label: 'Block Deals', count: stockBlock.length },
+            ] as const).map(({ key, label, count }) => (
+              <button
+                key={key}
+                onClick={() => setTab(key)}
+                className={cn(
+                  'flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1 rounded-md transition-all',
+                  tab === key
+                    ? 'bg-primary/15 text-primary'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+                )}
+              >
+                {label}
+                <span className={cn(
+                  'text-[9px] px-1.5 py-0.5 rounded-full font-bold',
+                  tab === key ? 'bg-primary/20 text-primary' : 'bg-secondary text-muted-foreground',
+                )}>
+                  {count}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* Deal rows */}
+          {activeDeals.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-1">
+              No {tab === 'bulk' ? 'bulk' : 'block'} deals recorded for {sym} today.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {activeDeals.map((deal, i) => (
+                <div
+                  key={i}
+                  className={cn(
+                    'flex items-center justify-between gap-3 py-2.5 px-3 rounded-lg border',
+                    deal.trade_type === 'BUY'
+                      ? 'bg-bull/5 border-bull/20'
+                      : deal.trade_type === 'SELL'
+                      ? 'bg-bear/5 border-bear/20'
+                      : 'bg-secondary/40 border-border/50',
+                  )}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-foreground truncate">
+                      {deal.client_name || 'Undisclosed Client'}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {fmtQty(deal.quantity)} shares
+                      {deal.trade_price > 0 && ` · ₹${fmt(deal.trade_price, 2)}`}
+                      {deal.exchange && ` · ${deal.exchange}`}
+                    </p>
+                  </div>
+                  <span className={cn(
+                    'text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0',
+                    deal.trade_type === 'BUY'  ? 'bg-bull/15 text-bull'
+                    : deal.trade_type === 'SELL' ? 'bg-bear/15 text-bear'
+                    : 'bg-muted text-muted-foreground',
+                  )}>
+                    {deal.trade_type || '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <p className="text-[10px] text-muted-foreground/60 leading-snug pt-1">
+            {tab === 'bulk'
+              ? 'Bulk deals — single trades ≥ 0.5% of total listed shares. High-conviction institutional moves.'
+              : 'Block deals — negotiated large trades in the 9:15–9:50 AM special window. Often FII/MF activity.'}
+          </p>
+        </div>
+      )}
+      <p className="text-[10px] text-muted-foreground/50 mt-3 pt-2 border-t border-border/40">
+        Source: NSE India · Refreshes every 15 min during market hours
+      </p>
+    </Card>
+  );
+}
+
 // ─── Signal Stack ─────────────────────────────────────────────────────────────
 
 function SignalPill({ signal }: { signal: SignalEntry }) {
@@ -1235,6 +1370,7 @@ export default function Stock() {
         technical: null, news: [], options: null, fiiDii: null,
         reddit: null, trends: null, youtube: null, earnings: null,
         bollinger: null, candlestick: null,
+        bulkDealsData: null, blockDealsData: null,
       });
 
       // Build the best possible news query using company name
@@ -1246,7 +1382,7 @@ export default function Stock() {
         .trim();
 
       // ── Phase 2: All remaining data in parallel, with smart news query ──
-      const [rTech, rNews, rOpts, rFii, rReddit, rTrends, rYoutube, rEarnings, rBollinger, rCandlestick] =
+      const [rTech, rNews, rOpts, rFii, rReddit, rTrends, rYoutube, rEarnings, rBollinger, rCandlestick, rBulkDeals, rBlockDeals] =
         await Promise.allSettled([
           technicalApi.summary(ns),
           newsApi.search(newsQuery, 72, true),
@@ -1258,6 +1394,8 @@ export default function Stock() {
           marketApi.earnings(ns),
           technicalApi.bollinger(ns),
           technicalApi.candlestick(ns),
+          nseApi.bulkDeals(),
+          nseApi.blockDeals(),
         ]);
 
       const g = <T,>(r: PromiseSettledResult<T>): T | null =>
@@ -1274,8 +1412,10 @@ export default function Stock() {
         trends:       g(rTrends)      as TrendsRow       | null,
         youtube:      g(rYoutube)     as YouTubeRow      | null,
         earnings:     g(rEarnings)    as EarningsRow     | null,
-        bollinger:    g(rBollinger)   as BollingerRow    | null,
-        candlestick:  g(rCandlestick) as CandlestickRow  | null,
+        bollinger:      g(rBollinger)   as BollingerRow    | null,
+        candlestick:    g(rCandlestick) as CandlestickRow  | null,
+        bulkDealsData:  g(rBulkDeals)   as { deals: BulkDealItem[]; total: number; note?: string } | null,
+        blockDealsData: g(rBlockDeals)  as { deals: BulkDealItem[]; total: number; note?: string } | null,
       });
     } finally {
       setDataLoading(false);
@@ -1494,6 +1634,13 @@ export default function Stock() {
               <SocialCard reddit={stockData?.reddit ?? null} trends={stockData?.trends ?? null} youtube={stockData?.youtube ?? null} />
               <InstitutionalCard fiiDii={stockData?.fiiDii ?? null} options={stockData?.options ?? null} />
             </div>
+
+            {/* Smart Money — Bulk & Block Deals */}
+            <SmartMoneyCard
+              bulkDealsData={stockData?.bulkDealsData ?? null}
+              blockDealsData={stockData?.blockDealsData ?? null}
+              ticker={ticker}
+            />
 
           </div>
         )}

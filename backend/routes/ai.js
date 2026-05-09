@@ -848,7 +848,7 @@ Speak like a senior fund manager giving the morning desk briefing. Every sentenc
       { role: 'user',   content: prompt },
     ];
 
-    const fullContent = await streamNvidia(res, messages, 2500, 0.4);
+    const fullContent = await streamNvidia(res, messages, 3500, 0.4);
 
     // Save briefing to DB
     pool.query(
