@@ -20,13 +20,21 @@ app = FastAPI(
     version="2.0.0",
 )
 
+ALLOWED_ORIGINS = [
+    "http://localhost:3001",
+    "http://localhost:5000",
+    "http://localhost:5173",
+]
+
+# Allow any onrender.com subdomain (backend calling data service on Render)
+BACKEND_URL = os.environ.get("BACKEND_URL", "")
+if BACKEND_URL:
+    ALLOWED_ORIGINS.append(BACKEND_URL)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3001",
-        "http://localhost:5000",
-        "http://localhost:5173",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"https://.*\.onrender\.com",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -108,5 +116,6 @@ async def cache_clear():
 
 # ─── Run ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
-    port = int(os.environ.get("PYTHON_SERVICE_PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    # Render injects PORT automatically. Fall back to PYTHON_SERVICE_PORT for local dev.
+    port = int(os.environ.get("PORT", os.environ.get("PYTHON_SERVICE_PORT", 8000)))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
