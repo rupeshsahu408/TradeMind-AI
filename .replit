@@ -77,3 +77,14 @@ externalPort = 3002
 [[ports]]
 localPort = 8000
 externalPort = 8000
+
+[userenv]
+
+[userenv.shared]
+VAPID_PUBLIC_KEY = "BP3uLVM8x7R98BzVtAiwJOxNGbCLRdAEcxfezbIV7P6Bn9HxCoG-X2GsOrNY24uqj-b1maQ-EHI3-FqnnRd8vx0"
+VAPID_PRIVATE_KEY = "LdSVYDe0wmjAkydapbJI0S-A3eLNJZ-Lnzo_QIU1f4Q"
+VAPID_EMAIL = "mailto:admin@billionaireai.com"
+NODE_ENV = "development"
+BACKEND_PORT = "3001"
+PYTHON_SERVICE_PORT = "8000"
+FRONTEND_PORT = "5000"
