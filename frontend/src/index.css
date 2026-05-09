@@ -1,0 +1,122 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light theme */
+    --background: 220 20% 97%;
+    --foreground: 222 47% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 8%;
+    --primary: 158 64% 42%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 14% 92%;
+    --secondary-foreground: 222 47% 20%;
+    --muted: 220 14% 93%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 220 14% 92%;
+    --accent-foreground: 222 47% 8%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 88%;
+    --input: 220 13% 88%;
+    --ring: 158 64% 42%;
+    --radius: 0.5rem;
+    /* Market-specific colors */
+    --bull: 158 64% 42%;
+    --bear: 0 84% 60%;
+    --neutral-signal: 43 96% 56%;
+    --conviction-high: 158 64% 42%;
+    --conviction-mid: 43 96% 56%;
+    --conviction-low: 0 84% 60%;
+  }
+
+  .dark {
+    /* Dark theme — default, trading terminal feel */
+    --background: 222 47% 5%;
+    --foreground: 210 40% 95%;
+    --card: 222 40% 8%;
+    --card-foreground: 210 40% 95%;
+    --popover: 222 40% 8%;
+    --popover-foreground: 210 40% 95%;
+    --primary: 158 64% 42%;
+    --primary-foreground: 222 47% 5%;
+    --secondary: 222 40% 12%;
+    --secondary-foreground: 210 40% 95%;
+    --muted: 222 40% 12%;
+    --muted-foreground: 215 20% 50%;
+    --accent: 222 40% 14%;
+    --accent-foreground: 210 40% 95%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 210 40% 95%;
+    --border: 222 40% 14%;
+    --input: 222 40% 14%;
+    --ring: 158 64% 42%;
+    --radius: 0.5rem;
+    /* Market-specific colors */
+    --bull: 158 64% 42%;
+    --bear: 0 72% 51%;
+    --neutral-signal: 43 96% 56%;
+    --conviction-high: 158 64% 42%;
+    --conviction-mid: 43 96% 56%;
+    --conviction-low: 0 72% 51%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer utilities {
+  .text-bull {
+    color: hsl(var(--bull));
+  }
+  .text-bear {
+    color: hsl(var(--bear));
+  }
+  .text-neutral-signal {
+    color: hsl(var(--neutral-signal));
+  }
+  .bg-bull {
+    background-color: hsl(var(--bull));
+  }
+  .bg-bear {
+    background-color: hsl(var(--bear));
+  }
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 4px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border));
+    border-radius: 2px;
+  }
+  .trading-card {
+    @apply bg-card border border-border rounded-lg p-4;
+  }
+  .price-up {
+    @apply text-bull;
+  }
+  .price-down {
+    @apply text-bear;
+  }
+}
