@@ -73,12 +73,29 @@
 | FastAPI | latest | Python microservice HTTP server |
 | Drizzle ORM | latest | Database ORM for PostgreSQL |
 
-### AI
-| Tool | Purpose |
-|------|---------|
-| Google Gemini 2.5 Flash | Core AI model — synthesizes all data, generates analysis, chat responses |
-| Gemini Vision | Chart image analysis (when user uploads chart screenshot) |
-| Gemini Web Search (grounding) | Built-in real-time web search during analysis |
+### AI (Powered by NVIDIA API)
+| Model | Role | Why |
+|-------|------|-----|
+| **OpenAI gpt-oss-120b** (via NVIDIA API) | Primary brain — deep analysis, Signal Stack, Morning Briefing, Stock Deep Dive, complex chat | 120B parameters = highest reasoning capability in the available model list. Best for synthesizing 15+ data sources into a structured verdict. Used for all high-stakes analysis. |
+| **Google gemma-4-31b-it** (via NVIDIA API) | Fast fallback — news sentiment tagging, quick chat replies, simple classifications | 31B model trained specifically for agentic workflows and reasoning. Used when speed matters or when primary model is rate-limited. Saves credits on lighter tasks. |
+| **Google paligemma** (via NVIDIA API) | Chart image analysis only | Multimodal model — accepts image + text input. Used exclusively when user uploads a chart screenshot for visual analysis. |
+
+**Model Routing Strategy:**
+```
+High-complexity tasks (Stock Deep Dive, Signal Stack, Morning Briefing, full analysis)
+  → gpt-oss-120b  [slow but most accurate — use when it matters]
+
+Low-complexity tasks (news sentiment tagging, short chat replies, quick classifications)
+  → gemma-4-31b-it  [fast, saves primary model credits]
+
+Chart image upload (Phase 6 feature)
+  → paligemma  [only model that accepts image input]
+```
+
+**API Platform:** NVIDIA NIM (build.nvidia.com)
+- All three models accessed via unified NVIDIA API endpoint
+- Single `NVIDIA_API_KEY` for all models
+- OpenAI-compatible API format — use `openai` Python/JS SDK pointed at NVIDIA base URL
 
 ### Database
 | Tool | Purpose |
@@ -281,7 +298,7 @@ CREATE TABLE alerts (
   - Install: `fastapi`, `uvicorn`, `yfinance`, `requests`, `beautifulsoup4`, `praw`, `pytrends`, `feedparser`, `alpha_vantage`
   - Create `/health` endpoint
 - [ ] Environment variables setup:
-  - `GEMINI_API_KEY` — Google Gemini API key
+  - `NVIDIA_API_KEY` — NVIDIA NIM API key (covers gpt-oss-120b, gemma-4-31b-it, paligemma)
   - `NEON_DATABASE_URL` — Neon PostgreSQL connection string
   - `NEWS_API_KEY` — NewsAPI.org free key
   - `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` — Reddit API credentials
@@ -370,7 +387,7 @@ CREATE TABLE alerts (
   - `GET /sentiment/trends?ticker=HDFCBANK` — interest over last 7 days for this search term
   - Returns: trend direction (rising/falling/stable) + peak interest score
 - [ ] AI Sentiment Tagging:
-  - Each news article passed through Gemini with prompt: classify as POSITIVE/NEGATIVE/NEUTRAL for the stock
+  - Each news article passed through gemma-4-31b-it (fast model) with prompt: classify as POSITIVE/NEGATIVE/NEUTRAL for the stock
   - Returns tagged articles array
 
 **Completion Check:** Call `/news/search?q=Tata+Motors` and get back 5+ recent news articles with POSITIVE/NEGATIVE/NEUTRAL tags.
@@ -379,15 +396,17 @@ CREATE TABLE alerts (
 
 ## Phase 4
 ### AI Brain Integration
-**Goal:** Gemini 2.5 Flash connected to all data sources. AI can generate full stock analysis on demand.
+**Goal:** NVIDIA API connected to all data sources. AI can generate full stock analysis on demand using the two-model strategy.
 **Estimated Size:** Medium
 **Tests:** Ask AI "Analyze RELIANCE.NS" and receive a structured response with verdict, reasoning, and signal stack.
 
 #### Tasks
-- [ ] Gemini API setup in Node.js backend:
-  - Install `@google/generative-ai`
-  - Initialize Gemini 2.5 Flash with API key
-  - Enable web search grounding (Gemini's built-in search)
+- [ ] NVIDIA API setup in Node.js backend:
+  - Install `openai` npm package (NVIDIA uses OpenAI-compatible API format)
+  - Initialize two clients pointing at NVIDIA base URL (`https://integrate.api.nvidia.com/v1`):
+    - `primaryAI` → model: `openai/gpt-oss-120b` (for deep analysis)
+    - `fastAI` → model: `google/gemma-4-31b-it` (for quick tasks)
+  - Single `NVIDIA_API_KEY` used for both clients
 - [ ] Data aggregator function:
   - `aggregateStockData(ticker)` — calls all Phase 2 + Phase 3 endpoints in parallel, combines results into one object
   - Runs all fetches simultaneously using `Promise.all()` for speed
@@ -430,19 +449,19 @@ CREATE TABLE alerts (
   ```
 - [ ] POST `/api/analyze` endpoint:
   - Input: `{ ticker, language }`
-  - Runs aggregateStockData → Signal Stack → Confidence → Gemini prompt
+  - Runs aggregateStockData → Signal Stack → Confidence → gpt-oss-120b prompt
   - Streams response back to frontend (token by token)
   - Saves prediction to `predictions` table in Neon DB
 - [ ] POST `/api/chat` endpoint:
   - Input: `{ message, sessionId, language, chatHistory }`
   - AI has context of last 10 messages + full current market data
-  - Gemini decides what data to fetch based on the question
+  - gpt-oss-120b decides what data to fetch based on the question
   - Streams response back
   - Saves to `chat_history` table
 - [ ] Chart analysis function:
   - `GET /api/chart-analysis?ticker=RELIANCE.NS&timeframe=1mo`
-  - Fetches OHLCV data → passes to Gemini with prompt asking for pattern identification
-  - Gemini explains: trend, support/resistance levels, chart pattern name, what it suggests
+  - Fetches OHLCV data → passes to gpt-oss-120b with prompt asking for pattern identification
+  - AI explains: trend, support/resistance levels, chart pattern name, what it suggests
 
 **Completion Check:** `POST /api/analyze` with `{ ticker: "RELIANCE.NS", language: "english" }` returns a streaming response with VERDICT, CONFIDENCE %, REASONING, SIGNAL STACK, and SOURCES.
 
@@ -560,8 +579,8 @@ CREATE TABLE alerts (
   - Past briefings listed at bottom of page (date + market mood badge)
 - [ ] Chart Image Upload (bonus feature in this phase):
   - Upload chart screenshot button on Stock Deep Dive page
-  - Image sent to Gemini Vision
-  - Gemini visually analyzes the chart image and returns pattern description
+  - Image sent to paligemma (via NVIDIA API — multimodal model)
+  - paligemma visually analyzes the chart image and returns pattern description in plain language
   - Displayed below the data-driven analysis
 
 **Completion Check:** Enter "TCS" in stock search → full report loads with real data in all sections → AI verdict shows at bottom. Click "Generate Briefing" → 15–30 seconds → complete morning report appears.
@@ -741,7 +760,7 @@ The Signal Stack evaluates 5 completely independent signals. A STRONG BUY requir
 
 ### Signal 3: News Sentiment Signal
 - **Source:** NewsAPI + RSS feeds + Google News (last 24 hours)
-- **BULLISH if:** 70%+ of news articles tagged POSITIVE by Gemini
+- **BULLISH if:** 70%+ of news articles tagged POSITIVE by gemma-4-31b-it
 - **BEARISH if:** 70%+ of news articles tagged NEGATIVE
 - **NEUTRAL otherwise**
 
@@ -764,9 +783,9 @@ The Signal Stack evaluates 5 completely independent signals. A STRONG BUY requir
 | Screen | Route | Primary Data Source | API Endpoints Used |
 |--------|-------|--------------------|--------------------|
 | Command Center | `/` | All | `/market/indices`, `/nse/fii-dii`, `/news/india-market`, `/nse/top-movers` |
-| AI Chat | `/chat` | Gemini + All | `POST /api/chat` |
+| AI Chat | `/chat` | gpt-oss-120b + All | `POST /api/chat` |
 | Stock Deep Dive | `/stock/:ticker` | All | `POST /api/analyze`, `/market/quote`, `/market/fundamentals`, `/technical/*`, `/news/search`, `/sentiment/*`, `/nse/options` |
-| Morning Briefing | `/briefing` | Gemini + All | `POST /api/briefing` |
+| Morning Briefing | `/briefing` | gpt-oss-120b + All | `POST /api/briefing` |
 | Watchlist | `/watchlist` | yfinance + News | `/market/quote`, `/news/search` |
 | Sector Radar | `/sectors` | NSE + AI | `/nse/sectors`, `POST /api/sector-analysis` |
 | Macro Pulse | `/macro` | Investing.com + AI | `/macro/commodities`, `/macro/forex`, `/macro/sgx-nifty`, `POST /api/macro-analysis` |
@@ -782,7 +801,7 @@ The Signal Stack evaluates 5 completely independent signals. A STRONG BUY requir
 
 | Key | Where to Get | Cost |
 |-----|-------------|------|
-| `GEMINI_API_KEY` | aistudio.google.com → Create API Key | ₹0 |
+| `NVIDIA_API_KEY` | build.nvidia.com → Sign up → API Key → covers all 3 models | ₹0 (free credits included) |
 | `NEON_DATABASE_URL` | neon.tech → New Project → Connection String | ₹0 |
 | `NEWS_API_KEY` | newsapi.org → Register → Free key | ₹0 |
 | `REDDIT_CLIENT_ID` + `REDDIT_CLIENT_SECRET` | reddit.com/prefs/apps → Create app | ₹0 |
