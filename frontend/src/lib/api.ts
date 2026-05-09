@@ -161,11 +161,29 @@ export interface TopMoversData {
   timestamp: string;
 }
 
+export interface SectorData {
+  name:       string;
+  index_name: string;
+  price:      number;
+  change:     number;
+  change_pct: number;
+  day_high:   number;
+  day_low:    number;
+}
+
+export interface SectorsResponse {
+  sectors:   SectorData[];
+  count:     number;
+  source:    string;
+  timestamp: string;
+}
+
 export const nseApi = {
   fiiDii:       ()               => api.get<FiiDiiData>('/nse/fii-dii'),
   options:      (ticker: string) => api.get(`/nse/options?ticker=${encodeURIComponent(ticker)}`),
   topMovers:    ()               => api.get<TopMoversData>('/nse/top-movers'),
   circuitStocks:()               => api.get('/nse/circuit-stocks'),
+  sectors:      ()               => api.get<SectorsResponse>('/nse/sectors'),
 };
 
 // ─── Technical ────────────────────────────────────────────────────────────────

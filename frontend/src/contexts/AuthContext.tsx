@@ -81,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   function setLanguage(language: string) {
+    localStorage.setItem('lang_pref', language);
     setState(prev => ({ ...prev, language }));
   }
 

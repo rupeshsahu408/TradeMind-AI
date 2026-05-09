@@ -1,11 +1,14 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Send, Square, MessageSquare, Plus, TrendingUp,
   TrendingDown, Minus, AlertCircle, ChevronDown,
+  History, X, Languages, Clock,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { aiApi, SignalStack } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 import MarkdownRenderer from '../components/MarkdownRenderer';
+
 const uuidv4 = () => crypto.randomUUID();
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -20,7 +23,22 @@ interface Message {
   timestamp: Date;
 }
 
-// ─── Status messages — rotated contextually before streaming begins ───────────
+interface HistoryMsg {
+  id: number;
+  session_id: string;
+  role: string;
+  content: string;
+  created_at: string;
+}
+
+interface SessionItem {
+  sid: string;
+  preview: string;
+  date: string;
+  msgCount: number;
+}
+
+// ─── Status messages ──────────────────────────────────────────────────────────
 
 const STATUS_POOLS = {
   stock: [
@@ -34,7 +52,7 @@ const STATUS_POOLS = {
     'Checking market indices...',
     'Scanning today\'s news...',
     'Reading global market cues...',
-    'Analyzing sector movements...',
+    'Analysing sector movements...',
   ],
   general: [
     'Processing your question...',
@@ -44,11 +62,10 @@ const STATUS_POOLS = {
 };
 
 function pickStatusMessages(message: string): string[] {
-  const isStock = /\b(stock|buy|sell|rsi|macd|technical|chart|invest|ipo|equity|nse|bse|[A-Z]{3,8})\b/i.test(message);
+  const isStock  = /\b(stock|buy|sell|rsi|macd|technical|chart|invest|ipo|equity|nse|bse|[A-Z]{3,8})\b/i.test(message);
   const isMarket = /\b(market|nifty|sensex|fii|dii|sector|index|indices|rally|crash|correction)\b/i.test(message);
   const pool = isStock ? STATUS_POOLS.stock : isMarket ? STATUS_POOLS.market : STATUS_POOLS.general;
-  const shuffled = [...pool].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, 3);
+  return [...pool].sort(() => Math.random() - 0.5).slice(0, 3);
 }
 
 // ─── Signal Stack display ─────────────────────────────────────────────────────
@@ -60,12 +77,13 @@ function SignalBadge({ signal }: { signal: SignalStack['signals'][0] }) {
       ? 'bg-bear/10 text-bear border-bear/20'
       : 'bg-muted text-muted-foreground border-border';
 
-  const Icon = signal.value === 'BULLISH' ? TrendingUp
-    : signal.value === 'BEARISH' ? TrendingDown : Minus;
+  const Icon = signal.value === 'BULLISH' ? TrendingUp : signal.value === 'BEARISH' ? TrendingDown : Minus;
 
   return (
-    <div className={cn('flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] font-medium', color)}
-      title={signal.detail}>
+    <div
+      className={cn('flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] font-medium', color)}
+      title={signal.detail}
+    >
       <Icon className="w-3 h-3 flex-shrink-0" />
       <span>{signal.name}</span>
     </div>
@@ -77,7 +95,6 @@ function SignalStackDisplay({ stack }: { stack: SignalStack }) {
   const verdictColor = stack.confidence >= 75 ? 'text-bull'
     : stack.confidence >= 60 ? 'text-amber-500'
       : stack.confidence >= 45 ? 'text-orange-400' : 'text-bear';
-
   const confBg = stack.confidence >= 75 ? 'bg-bull/10 border-bull/20'
     : stack.confidence >= 60 ? 'bg-amber-500/10 border-amber-500/20'
       : 'bg-bear/10 border-bear/20';
@@ -94,8 +111,7 @@ function SignalStackDisplay({ stack }: { stack: SignalStack }) {
             {stack.signals.map(s => (
               <span
                 key={s.name}
-                className={cn('w-2 h-2 rounded-full',
-                  s.value === 'BULLISH' ? 'bg-bull' : s.value === 'BEARISH' ? 'bg-bear' : 'bg-muted-foreground')}
+                className={cn('w-2 h-2 rounded-full', s.value === 'BULLISH' ? 'bg-bull' : s.value === 'BEARISH' ? 'bg-bear' : 'bg-muted-foreground')}
               />
             ))}
           </div>
@@ -108,7 +124,6 @@ function SignalStackDisplay({ stack }: { stack: SignalStack }) {
           <ChevronDown className={cn('w-3.5 h-3.5 text-muted-foreground transition-transform', expanded && 'rotate-180')} />
         </div>
       </button>
-
       {expanded && (
         <div className="px-3 py-2 space-y-1.5 border-t border-border">
           {stack.signals.map(s => (
@@ -119,7 +134,7 @@ function SignalStackDisplay({ stack }: { stack: SignalStack }) {
           ))}
           <div className="pt-1 border-t border-border/50 mt-1.5">
             <p className="text-[10px] text-muted-foreground">
-              {stack.bullishCount}/5 signals bullish · {stack.bearishCount}/5 signals bearish · Confidence: {stack.confidence}%
+              {stack.bullishCount}/5 bullish · {stack.bearishCount}/5 bearish · Confidence: {stack.confidence}%
             </p>
           </div>
         </div>
@@ -162,7 +177,7 @@ function WorkingStatus({ messages, visible }: { messages: string[]; visible: boo
   );
 }
 
-// ─── Individual message bubble ────────────────────────────────────────────────
+// ─── Message bubble ───────────────────────────────────────────────────────────
 
 function MessageBubble({ msg }: { msg: Message }) {
   const isUser = msg.role === 'user';
@@ -180,7 +195,6 @@ function MessageBubble({ msg }: { msg: Message }) {
   return (
     <div className="flex justify-start mb-4">
       <div className="max-w-[90%] w-full">
-        {/* AI bubble */}
         <div className={cn(
           'px-4 py-3 rounded-2xl rounded-tl-sm bg-secondary/60 border border-border/50',
           msg.error && 'border-bear/30 bg-bear/5',
@@ -200,12 +214,9 @@ function MessageBubble({ msg }: { msg: Message }) {
             </div>
           )}
         </div>
-
-        {/* Signal Stack below the bubble if present */}
         {msg.signalStack && !msg.streaming && (
           <SignalStackDisplay stack={msg.signalStack} />
         )}
-
         <p className="text-[10px] text-muted-foreground mt-1 ml-1">
           {msg.timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
         </p>
@@ -214,24 +225,174 @@ function MessageBubble({ msg }: { msg: Message }) {
   );
 }
 
+// ─── History Panel ────────────────────────────────────────────────────────────
+
+interface HistoryPanelProps {
+  sessions: SessionItem[];
+  loading: boolean;
+  currentSid: string;
+  onLoadSession: (sid: string) => void;
+  onClose: () => void;
+  onNewChat: () => void;
+}
+
+function HistoryPanel({ sessions, loading, currentSid, onLoadSession, onClose, onNewChat }: HistoryPanelProps) {
+  function relativeDate(dateStr: string): string {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffDays = Math.floor(diffMs / 86400000);
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  }
+
+  return (
+    <div className="w-64 flex-shrink-0 border-r border-border flex flex-col bg-card animate-slide-up">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-3 border-b border-border">
+        <div className="flex items-center gap-2">
+          <History className="w-3.5 h-3.5 text-primary" />
+          <span className="text-sm font-semibold text-foreground">History</span>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        >
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* New chat button */}
+      <div className="px-3 py-2 border-b border-border/50">
+        <button
+          onClick={() => { onNewChat(); onClose(); }}
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border border-dashed border-border"
+        >
+          <Plus className="w-3 h-3" />
+          New Chat
+        </button>
+      </div>
+
+      {/* Session list */}
+      <div className="flex-1 overflow-y-auto scrollbar-thin py-1">
+        {loading ? (
+          <div className="space-y-1.5 px-3 py-2">
+            {[1,2,3,4,5].map(i => (
+              <div key={i} className="h-12 rounded-md bg-muted animate-pulse" />
+            ))}
+          </div>
+        ) : sessions.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+            <Clock className="w-7 h-7 text-muted-foreground/30 mb-2" />
+            <p className="text-xs text-muted-foreground">No chat history yet.</p>
+            <p className="text-[10px] text-muted-foreground mt-1">Start a conversation to see it here.</p>
+          </div>
+        ) : (
+          <div className="px-2 py-1 space-y-0.5">
+            {sessions.map((s) => (
+              <button
+                key={s.sid}
+                onClick={() => onLoadSession(s.sid)}
+                className={cn(
+                  'flex flex-col items-start w-full px-3 py-2.5 rounded-md text-left transition-colors',
+                  s.sid === currentSid
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+                )}
+              >
+                <p className="text-xs font-medium leading-snug truncate w-full">
+                  {s.preview || 'Conversation'}
+                </p>
+                <p className="text-[10px] mt-0.5 opacity-60">{relativeDate(s.date)} · {s.msgCount} msgs</p>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Chat Page ───────────────────────────────────────────────────────────
 
 export default function Chat() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [input, setInput] = useState('');
-  const [streaming, setStreaming] = useState(false);
-  const [statusMsgs, setStatusMsgs] = useState<string[]>([]);
-  const [showStatus, setShowStatus] = useState(false);
+  const { language, setLanguage } = useAuth();
+
+  const [messages, setMessages]       = useState<Message[]>([]);
+  const [input, setInput]             = useState('');
+  const [streaming, setStreaming]     = useState(false);
+  const [statusMsgs, setStatusMsgs]   = useState<string[]>([]);
+  const [showStatus, setShowStatus]   = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [allHistory, setAllHistory]   = useState<HistoryMsg[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   const sessionId = useRef(uuidv4());
   const abortRef  = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLTextAreaElement>(null);
   const aiMsgId   = useRef<string>('');
 
+  const isHindi = language === 'hindi';
+
   // Auto-scroll to bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Load history when panel opens
+  useEffect(() => {
+    if (historyOpen && allHistory.length === 0 && !historyLoading) {
+      fetchHistory();
+    }
+  }, [historyOpen]);
+
+  async function fetchHistory() {
+    setHistoryLoading(true);
+    try {
+      const resp = await aiApi.chatHistory({ limit: 200 });
+      setAllHistory(resp.history);
+    } catch {
+      // silently fail
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  // Sessions: group allHistory by session_id (newest first)
+  const sessions = useMemo((): SessionItem[] => {
+    const map = new Map<string, SessionItem>();
+    for (const msg of allHistory) {
+      if (!map.has(msg.session_id)) {
+        map.set(msg.session_id, {
+          sid:      msg.session_id,
+          preview:  msg.role === 'user' ? msg.content.slice(0, 55) : 'AI response',
+          date:     msg.created_at,
+          msgCount: 0,
+        });
+      }
+      map.get(msg.session_id)!.msgCount++;
+    }
+    return Array.from(map.values());
+  }, [allHistory]);
+
+  function loadSession(sid: string) {
+    if (streaming) return;
+    const sessionMsgs: Message[] = allHistory
+      .filter(m => m.session_id === sid)
+      .map(m => ({
+        id:        String(m.id),
+        role:      m.role as 'user' | 'assistant',
+        content:   m.content,
+        streaming: false,
+        timestamp: new Date(m.created_at),
+      }));
+    sessionId.current = sid;
+    setMessages(sessionMsgs);
+    setHistoryOpen(false);
+  }
 
   function newChat() {
     if (streaming) return;
@@ -245,30 +406,16 @@ export default function Chat() {
     const text = input.trim();
     if (!text || streaming) return;
 
-    // Add user message
-    const userMsg: Message = {
-      id: uuidv4(),
-      role: 'user',
-      content: text,
-      timestamp: new Date(),
-    };
+    const userMsg: Message = { id: uuidv4(), role: 'user', content: text, timestamp: new Date() };
 
-    // Placeholder for AI response
     const aId = uuidv4();
     aiMsgId.current = aId;
-    const aiMsg: Message = {
-      id: aId,
-      role: 'assistant',
-      content: '',
-      streaming: true,
-      timestamp: new Date(),
-    };
+    const aiMsg: Message = { id: aId, role: 'assistant', content: '', streaming: true, timestamp: new Date() };
 
     setMessages(prev => [...prev, userMsg, aiMsg]);
     setInput('');
     setStreaming(true);
 
-    // Show working status
     const statusMessages = pickStatusMessages(text);
     setStatusMsgs(statusMessages);
     setShowStatus(true);
@@ -276,7 +423,6 @@ export default function Chat() {
     const abort = new AbortController();
     abortRef.current = abort;
 
-    // Build history for context (exclude last placeholder)
     const history = messages.map(m => ({ role: m.role, content: m.content }));
 
     let streamStarted = false;
@@ -286,23 +432,13 @@ export default function Chat() {
       signal: abort.signal,
 
       onMeta: (key, value) => {
-        if (key === 'stream_start') {
-          streamStarted = true;
-          setShowStatus(false);
-        }
-        if (key === 'signal_stack') {
-          pendingStack = value as SignalStack;
-        }
+        if (key === 'stream_start') { streamStarted = true; setShowStatus(false); }
+        if (key === 'signal_stack') { pendingStack = value as SignalStack; }
       },
 
       onToken: (token) => {
-        if (!streamStarted) {
-          streamStarted = true;
-          setShowStatus(false);
-        }
-        setMessages(prev => prev.map(m =>
-          m.id === aId ? { ...m, content: m.content + token } : m,
-        ));
+        if (!streamStarted) { streamStarted = true; setShowStatus(false); }
+        setMessages(prev => prev.map(m => m.id === aId ? { ...m, content: m.content + token } : m));
       },
 
       onDone: () => {
@@ -310,11 +446,11 @@ export default function Chat() {
         setShowStatus(false);
         abortRef.current = null;
         setMessages(prev => prev.map(m =>
-          m.id === aId
-            ? { ...m, streaming: false, signalStack: pendingStack }
-            : m,
+          m.id === aId ? { ...m, streaming: false, signalStack: pendingStack } : m,
         ));
         inputRef.current?.focus();
+        // Refresh history list so new session appears
+        setAllHistory([]);
       },
 
       onError: (msg) => {
@@ -338,143 +474,213 @@ export default function Chat() {
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
   }
 
-  // Suggested prompts for empty state
-  const suggestions = [
-    'Is RELIANCE a good buy today?',
-    'What is the market mood right now?',
-    'Analyse HDFCBANK with RSI and MACD',
-    'Give me top sectors to watch today',
-    'What is FII doing in the market?',
-    'INFY pe kya view hai aaj?',
-  ];
+  const suggestions = isHindi
+    ? [
+        'RELIANCE aaj kharidna chahiye?',
+        'Market mood abhi kaisa hai?',
+        'HDFCBANK ka RSI aur MACD batao',
+        'Aaj ke top sectors kaun se hain?',
+        'FII kya kar raha hai market mein?',
+        'INFY pe kya view hai aaj?',
+      ]
+    : [
+        'Is RELIANCE a good buy today?',
+        'What is the market mood right now?',
+        'Analyse HDFCBANK with RSI and MACD',
+        'Give me top sectors to watch today',
+        'What is FII doing in the market?',
+        'INFY pe kya view hai aaj?',
+      ];
 
   return (
-    <div className="flex flex-col h-full max-h-[calc(100vh-3.5rem)]">
+    <div className="flex h-full max-h-[calc(100vh-3.5rem)]">
 
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-border flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-primary" />
-          <h1 className="text-sm font-semibold text-foreground">AI Research Chat</h1>
-          <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
-            NVIDIA LLM
-          </span>
-        </div>
-        <button
-          onClick={newChat}
-          disabled={streaming}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-md hover:bg-accent transition-colors disabled:opacity-40"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          New Chat
-        </button>
-      </div>
+      {/* History Panel */}
+      {historyOpen && (
+        <HistoryPanel
+          sessions={sessions}
+          loading={historyLoading}
+          currentSid={sessionId.current}
+          onLoadSession={loadSession}
+          onClose={() => setHistoryOpen(false)}
+          onNewChat={newChat}
+        />
+      )}
 
-      {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-0">
+      {/* Chat Area */}
+      <div className="flex flex-col flex-1 min-w-0">
 
-        {/* Empty state with suggestions */}
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full py-8">
-            <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
-              <MessageSquare className="w-6 h-6 text-primary" />
-            </div>
-            <h2 className="text-base font-semibold text-foreground mb-1">Billionaire AI</h2>
-            <p className="text-xs text-muted-foreground text-center max-w-xs mb-6">
-              Senior proprietary trader mindset. Live market data. 15+ signals. Streams word-by-word.
-            </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-md">
-              {suggestions.map((s, i) => (
-                <button
-                  key={i}
-                  onClick={() => { setInput(s); inputRef.current?.focus(); }}
-                  className="text-left text-xs px-3 py-2.5 rounded-lg border border-border hover:border-primary/40 hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-all leading-snug"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Message list */}
-        {messages.map((msg) => (
-          <div key={msg.id}>
-            <MessageBubble msg={msg} />
-            {/* Working status shown below the last AI message while it's empty + streaming */}
-            {msg.role === 'assistant' && msg.streaming && !msg.content && (
-              <div className="ml-0 mb-2 px-4 pb-1">
-                <WorkingStatus messages={statusMsgs} visible={showStatus} />
-              </div>
-            )}
-          </div>
-        ))}
-
-        <div ref={bottomRef} />
-      </div>
-
-      {/* Input area */}
-      <div className="flex-shrink-0 border-t border-border px-4 py-3 bg-background">
-        <div className="flex items-end gap-2 max-w-4xl mx-auto">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={streaming}
-            rows={1}
-            placeholder={streaming ? 'AI is responding...' : 'Ask about any stock, sector, or market...'}
-            className={cn(
-              'flex-1 resize-none bg-input border border-border rounded-xl px-4 py-3',
-              'text-sm text-foreground placeholder:text-muted-foreground',
-              'focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent',
-              'transition-all min-h-[44px] max-h-[160px] overflow-y-auto',
-              'disabled:opacity-60',
-            )}
-            style={{
-              height: 'auto',
-              minHeight: '44px',
-            }}
-            onInput={(e) => {
-              const t = e.target as HTMLTextAreaElement;
-              t.style.height = 'auto';
-              t.style.height = Math.min(t.scrollHeight, 160) + 'px';
-            }}
-          />
-
-          {streaming ? (
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border flex-shrink-0">
+          <div className="flex items-center gap-2">
+            {/* History toggle */}
             <button
-              onClick={abort}
-              className="w-10 h-10 flex-shrink-0 rounded-xl bg-bear/10 text-bear border border-bear/30 flex items-center justify-center hover:bg-bear/20 transition-colors"
-              title="Stop generating"
-            >
-              <Square className="w-4 h-4 fill-current" />
-            </button>
-          ) : (
-            <button
-              onClick={sendMessage}
-              disabled={!input.trim()}
+              onClick={() => {
+                setHistoryOpen(v => !v);
+              }}
               className={cn(
-                'w-10 h-10 flex-shrink-0 rounded-xl flex items-center justify-center transition-all',
-                input.trim()
-                  ? 'bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95'
-                  : 'bg-muted text-muted-foreground cursor-not-allowed',
+                'p-1.5 rounded-md transition-colors',
+                historyOpen
+                  ? 'bg-primary/10 text-primary'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent',
               )}
-              title="Send (Enter)"
+              title="Chat history"
             >
-              <Send className="w-4 h-4" />
+              <History className="w-4 h-4" />
             </button>
-          )}
+            <MessageSquare className="w-4 h-4 text-primary" />
+            <h1 className="text-sm font-semibold text-foreground">AI Research Chat</h1>
+            <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
+              NVIDIA LLM
+            </span>
+            {/* Hindi mode indicator */}
+            {isHindi && (
+              <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium border border-primary/20">
+                हिंदी
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Language toggle */}
+            <button
+              onClick={() => setLanguage(isHindi ? 'english' : 'hindi')}
+              className={cn(
+                'flex items-center gap-1 text-xs px-2.5 py-1 rounded-md border transition-colors',
+                isHindi
+                  ? 'bg-primary/10 text-primary border-primary/30 hover:bg-primary/15'
+                  : 'text-muted-foreground border-border hover:bg-accent hover:text-foreground',
+              )}
+              title={isHindi ? 'Switch to English' : 'Switch to Hindi'}
+            >
+              <Languages className="w-3 h-3" />
+              {isHindi ? 'हिंदी' : 'EN'}
+            </button>
+
+            {/* New chat */}
+            <button
+              onClick={newChat}
+              disabled={streaming}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-md hover:bg-accent transition-colors disabled:opacity-40"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              New Chat
+            </button>
+          </div>
         </div>
-        <p className="text-[10px] text-muted-foreground text-center mt-2">
-          Press Enter to send · Shift+Enter for new line · For informational purposes only
-        </p>
+
+        {/* Messages area */}
+        <div className="flex-1 overflow-y-auto px-4 py-4">
+
+          {/* Empty state */}
+          {messages.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full py-8">
+              <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
+                <MessageSquare className="w-6 h-6 text-primary" />
+              </div>
+              <h2 className="text-base font-semibold text-foreground mb-1">Billionaire AI</h2>
+              <p className="text-xs text-muted-foreground text-center max-w-xs mb-1">
+                {isHindi
+                  ? 'Senior trader की सोच। Live market data। 15+ signals। Word-by-word streaming।'
+                  : 'Senior proprietary trader mindset. Live market data. 15+ signals. Streams word-by-word.'}
+              </p>
+              {isHindi && (
+                <p className="text-[11px] text-primary/70 mb-5">हिंदी / Hinglish में पूछें — AI हिंदी में जवाब देगा।</p>
+              )}
+              <div className={cn(!isHindi && 'mb-6')} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-md">
+                {suggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => { setInput(s); inputRef.current?.focus(); }}
+                    className="text-left text-xs px-3 py-2.5 rounded-lg border border-border hover:border-primary/40 hover:bg-accent/50 text-muted-foreground hover:text-foreground transition-all leading-snug"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Messages */}
+          {messages.map((msg) => (
+            <div key={msg.id}>
+              <MessageBubble msg={msg} />
+              {msg.role === 'assistant' && msg.streaming && !msg.content && (
+                <div className="ml-0 mb-2 px-4 pb-1">
+                  <WorkingStatus messages={statusMsgs} visible={showStatus} />
+                </div>
+              )}
+            </div>
+          ))}
+
+          <div ref={bottomRef} />
+        </div>
+
+        {/* Input area */}
+        <div className="flex-shrink-0 border-t border-border px-4 py-3 bg-background">
+          <div className="flex items-end gap-2 max-w-4xl mx-auto">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={streaming}
+              rows={1}
+              placeholder={
+                streaming
+                  ? 'AI is responding...'
+                  : isHindi
+                    ? 'कोई भी stock, sector ya market ke baare mein puchho...'
+                    : 'Ask about any stock, sector, or market...'
+              }
+              className={cn(
+                'flex-1 resize-none bg-input border border-border rounded-xl px-4 py-3',
+                'text-sm text-foreground placeholder:text-muted-foreground',
+                'focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent',
+                'transition-all min-h-[44px] max-h-[160px] overflow-y-auto disabled:opacity-60',
+              )}
+              style={{ height: 'auto', minHeight: '44px' }}
+              onInput={(e) => {
+                const t = e.target as HTMLTextAreaElement;
+                t.style.height = 'auto';
+                t.style.height = Math.min(t.scrollHeight, 160) + 'px';
+              }}
+            />
+
+            {streaming ? (
+              <button
+                onClick={abort}
+                className="w-10 h-10 flex-shrink-0 rounded-xl bg-bear/10 text-bear border border-bear/30 flex items-center justify-center hover:bg-bear/20 transition-colors"
+                title="Stop generating"
+              >
+                <Square className="w-4 h-4 fill-current" />
+              </button>
+            ) : (
+              <button
+                onClick={sendMessage}
+                disabled={!input.trim()}
+                className={cn(
+                  'w-10 h-10 flex-shrink-0 rounded-xl flex items-center justify-center transition-all',
+                  input.trim()
+                    ? 'bg-primary text-primary-foreground hover:bg-primary/90 active:scale-95'
+                    : 'bg-muted text-muted-foreground cursor-not-allowed',
+                )}
+                title="Send (Enter)"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+          <p className="text-[10px] text-muted-foreground text-center mt-2">
+            {isHindi
+              ? 'Enter dababein bhejne ke liye · Shift+Enter nai line ke liye · Sirf jankari ke liye'
+              : 'Press Enter to send · Shift+Enter for new line · For informational purposes only'}
+          </p>
+        </div>
       </div>
     </div>
   );

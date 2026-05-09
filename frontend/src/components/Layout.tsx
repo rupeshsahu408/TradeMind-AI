@@ -19,22 +19,22 @@ import {
   Sun,
   Moon,
   Menu,
-  X,
+  Languages,
   Zap,
 } from 'lucide-react';
 
 const navItems = [
-  { label: 'Command Center', href: '/', icon: LayoutDashboard },
-  { label: 'AI Research Chat', href: '/chat', icon: MessageSquare },
-  { label: 'Stock Deep Dive', href: '/stock', icon: TrendingUp },
-  { label: 'Morning Briefing', href: '/briefing', icon: Newspaper },
-  { label: 'Watchlist', href: '/watchlist', icon: Star },
-  { label: 'Sector Radar', href: '/sectors', icon: BarChart2 },
-  { label: 'Macro Pulse', href: '/macro', icon: Globe },
-  { label: 'Accuracy Tracker', href: '/accuracy', icon: Target },
-  { label: 'Event Calendar', href: '/calendar', icon: Calendar },
-  { label: 'Research Log', href: '/history', icon: History },
-  { label: 'Settings', href: '/settings', icon: Settings },
+  { label: 'Command Center',  href: '/',          icon: LayoutDashboard },
+  { label: 'AI Research Chat', href: '/chat',      icon: MessageSquare },
+  { label: 'Stock Deep Dive', href: '/stock',      icon: TrendingUp },
+  { label: 'Morning Briefing',href: '/briefing',   icon: Newspaper },
+  { label: 'Watchlist',       href: '/watchlist',  icon: Star },
+  { label: 'Sector Radar',    href: '/sectors',    icon: BarChart2 },
+  { label: 'Macro Pulse',     href: '/macro',      icon: Globe },
+  { label: 'Accuracy Tracker',href: '/accuracy',   icon: Target },
+  { label: 'Event Calendar',  href: '/calendar',   icon: Calendar },
+  { label: 'Research Log',    href: '/history',    icon: History },
+  { label: 'Settings',        href: '/settings',   icon: Settings },
 ];
 
 interface LayoutProps {
@@ -43,9 +43,15 @@ interface LayoutProps {
 
 export default function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
-  const { logout, language } = useAuth();
+  const { logout, language, setLanguage } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const isHindi = language === 'hindi';
+
+  function toggleLanguage() {
+    setLanguage(isHindi ? 'english' : 'hindi');
+  }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -101,6 +107,28 @@ export default function Layout({ children }: LayoutProps) {
 
         {/* Bottom controls */}
         <div className="border-t border-border p-3 space-y-1">
+          {/* Language toggle */}
+          <button
+            onClick={toggleLanguage}
+            className={cn(
+              'flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm transition-colors',
+              isHindi
+                ? 'bg-primary/10 text-primary hover:bg-primary/15'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+            )}
+            title={isHindi ? 'Switch to English' : 'हिंदी में बदलें'}
+          >
+            <Languages className="w-4 h-4 flex-shrink-0" />
+            <span className="flex-1 text-left">{isHindi ? 'हिंदी मोड' : 'Language'}</span>
+            <span className={cn(
+              'text-[10px] font-bold px-1.5 py-0.5 rounded border font-mono',
+              isHindi ? 'bg-primary/20 text-primary border-primary/30' : 'bg-muted text-muted-foreground border-border',
+            )}>
+              {isHindi ? 'HI' : 'EN'}
+            </span>
+          </button>
+
+          {/* Theme toggle */}
           <button
             onClick={toggleTheme}
             className="flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
@@ -108,6 +136,8 @@ export default function Layout({ children }: LayoutProps) {
             {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
           </button>
+
+          {/* Logout */}
           <button
             onClick={logout}
             className="flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm text-muted-foreground hover:text-bear hover:bg-bear/10 transition-colors"
@@ -120,7 +150,7 @@ export default function Layout({ children }: LayoutProps) {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top bar (mobile) */}
+        {/* Top bar (mobile only) */}
         <header className="flex items-center gap-3 px-4 py-3 border-b border-border lg:hidden bg-card">
           <button
             onClick={() => setSidebarOpen(true)}
@@ -128,7 +158,19 @@ export default function Layout({ children }: LayoutProps) {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <span className="text-sm font-semibold text-foreground">Billionaire AI</span>
+          <span className="text-sm font-semibold text-foreground flex-1">Billionaire AI</span>
+          {/* Language indicator on mobile */}
+          <button
+            onClick={toggleLanguage}
+            className={cn(
+              'text-[10px] font-bold px-2 py-1 rounded border font-mono transition-colors',
+              isHindi
+                ? 'bg-primary/10 text-primary border-primary/30'
+                : 'text-muted-foreground border-border hover:bg-accent',
+            )}
+          >
+            {isHindi ? 'HI' : 'EN'}
+          </button>
         </header>
 
         {/* Page content */}

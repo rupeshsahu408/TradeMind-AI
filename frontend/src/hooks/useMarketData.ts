@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  marketApi, nseApi, macroApi,
-  IndicesResponse, FiiDiiData, TopMoversData, MacroSnapshot,
+  marketApi, nseApi, macroApi, newsApi, aiApi,
+  IndicesResponse, FiiDiiData, TopMoversData, MacroSnapshot, SectorsResponse,
 } from '../lib/api';
 
 // ─── Generic fetch hook ───────────────────────────────────────────────────────
@@ -106,4 +106,19 @@ export function useCommodities(autoRefreshMs = 300_000) {
 // ─── Global Indices ───────────────────────────────────────────────────────────
 export function useGlobalIndices(autoRefreshMs = 300_000) {
   return useFetch(() => macroApi.globalIndices(), [], autoRefreshMs);
+}
+
+// ─── NSE Sector Indices ───────────────────────────────────────────────────────
+export function useSectorIndices(autoRefreshMs = 300_000) {
+  return useFetch<SectorsResponse>(() => nseApi.sectors(), [], autoRefreshMs);
+}
+
+// ─── India Market News ────────────────────────────────────────────────────────
+export function useIndiaMarketNews(autoRefreshMs = 120_000) {
+  return useFetch(() => newsApi.indiaMarket(false, 30), [], autoRefreshMs);
+}
+
+// ─── Recent Predictions ───────────────────────────────────────────────────────
+export function usePredictions() {
+  return useFetch(() => aiApi.predictions(), []);
 }

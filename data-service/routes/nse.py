@@ -8,6 +8,22 @@ from utils.nse_session import nse_session
 
 router = APIRouter(prefix="/nse", tags=["nse"])
 
+# Sector index display names — maps NSE allIndices name to UI label
+_SECTOR_MAP = {
+    "NIFTY BANK":             "Banking",
+    "NIFTY IT":               "IT",
+    "NIFTY PHARMA":           "Pharma",
+    "NIFTY AUTO":             "Auto",
+    "NIFTY FMCG":             "FMCG",
+    "NIFTY METAL":            "Metal",
+    "NIFTY REALTY":           "Realty",
+    "NIFTY ENERGY":           "Energy",
+    "NIFTY HEALTHCARE INDEX": "Healthcare",
+    "NIFTY MEDIA":            "Media",
+    "NIFTY PSU BANK":         "PSU Bank",
+    "NIFTY INFRA":            "Infra",
+}
+
 # Top 20 Nifty 50 constituents — used as fallback for top-movers
 NIFTY50_SAMPLE = [
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
@@ -271,6 +287,54 @@ async def nse_circuit_stocks():
         "upper_circuit": _parse_circuit(upper_raw),
         "lower_circuit":  _parse_circuit(lower_raw),
         "source": "NSE India",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+    cache.set(cache_key, result, ttl_seconds=300)
+    return result
+
+
+# ─── Sector Heat Map ──────────────────────────────────────────────────────────
+
+@router.get("/sectors")
+async def nse_sectors():
+    """
+    Returns NSE sector indices performance from the NSE allIndices feed.
+    Sorted by change_pct descending so gainers appear first.
+    """
+    cache_key = "nse:sectors"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    raw = await nse_session.get("/api/allIndices")
+    sectors = []
+
+    if raw and "data" in raw:
+        for item in raw.get("data", []):
+            name = item.get("index", "")
+            display = _SECTOR_MAP.get(name)
+            if not display:
+                continue
+            price      = _safe_float(item.get("last") or item.get("previousClose", 0))
+            change     = _safe_float(item.get("variation", 0))
+            change_pct = _safe_float(item.get("percentChange", 0))
+            sectors.append({
+                "name":        display,
+                "index_name":  name,
+                "price":       round(price, 2),
+                "change":      round(change, 2),
+                "change_pct":  round(change_pct, 2),
+                "day_high":    _safe_float(item.get("high", 0)),
+                "day_low":     _safe_float(item.get("low", 0)),
+            })
+
+    # Sort gainers first
+    sectors.sort(key=lambda x: x["change_pct"], reverse=True)
+
+    result = {
+        "sectors":   sectors,
+        "count":     len(sectors),
+        "source":    "NSE India",
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
     cache.set(cache_key, result, ttl_seconds=300)

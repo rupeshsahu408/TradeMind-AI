@@ -119,4 +119,17 @@
   .price-down {
     @apply text-bear;
   }
+
+  /* News ticker marquee */
+  .animate-marquee {
+    animation: marquee 80s linear infinite;
+  }
+  .animate-marquee:hover {
+    animation-play-state: paused;
+  }
+}
+
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
