@@ -48,8 +48,9 @@ RSS_FEEDS = {
         "url": "https://www.livemint.com/rss/markets",
     },
     "bs": {
-        "name": "Business Standard",
-        "url": "https://www.business-standard.com/rss/markets-106.rss",
+        "name": "Financial Express",
+        "url": "https://www.financialexpress.com/market/feed/",
+        "fallback": "https://economictimes.indiatimes.com/markets/rssfeeds/1977021501.cms",
     },
 }
 
@@ -99,21 +100,31 @@ async def _fetch_rss_articles(source_key: str, limit: int = 15) -> list[dict]:
     if cached:
         return cached
 
-    try:
-        async with httpx.AsyncClient(timeout=15, headers=_HEADERS, follow_redirects=True) as client:
-            resp = await client.get(feed_info["url"])
-            if resp.status_code != 200:
-                print(f"[News] RSS {source_key} returned HTTP {resp.status_code}")
-                return []
-            feed = feedparser.parse(resp.text)
+    urls_to_try = [feed_info["url"]]
+    if feed_info.get("fallback"):
+        urls_to_try.append(feed_info["fallback"])
 
-        articles = [_parse_entry(e, feed_info["name"]) for e in feed.entries[:limit]]
-        cache.set(cache_key, articles, ttl_seconds=900)   # 15 min
-        return articles
+    for url in urls_to_try:
+        try:
+            async with httpx.AsyncClient(timeout=15, headers=_HEADERS, follow_redirects=True) as client:
+                resp = await client.get(url)
+                if resp.status_code != 200:
+                    print(f"[News] RSS {source_key} ({url}) returned HTTP {resp.status_code}")
+                    continue
+                feed = feedparser.parse(resp.text)
+                if not feed.entries:
+                    print(f"[News] RSS {source_key} ({url}) returned 0 entries")
+                    continue
 
-    except Exception as e:
-        print(f"[News] RSS fetch failed ({source_key}): {e}")
-        return []
+            articles = [_parse_entry(e, feed_info["name"]) for e in feed.entries[:limit]]
+            cache.set(cache_key, articles, ttl_seconds=900)
+            return articles
+
+        except Exception as e:
+            print(f"[News] RSS fetch failed ({source_key}, {url}): {e}")
+            continue
+
+    return []
 
 
 # ─── GET /news/search ─────────────────────────────────────────────────────────
@@ -140,12 +151,20 @@ async def news_search(
 
     from_dt = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    # Scope to major Indian financial news domains for relevance
+    INDIA_DOMAINS = (
+        "economictimes.indiatimes.com,livemint.com,moneycontrol.com,"
+        "financialexpress.com,business-standard.com,ndtv.com,"
+        "thehindu.com,hindustantimes.com,zeebiz.com,cnbctv18.com,"
+        "businesstoday.in,bloombergquint.com,reuters.com,bloomberg.com"
+    )
     params = {
         "q":           q,
         "from":        from_dt,
         "language":    "en",
-        "sortBy":      "publishedAt",
-        "pageSize":    min(limit, 30),
+        "sortBy":      "relevancy",
+        "pageSize":    min(limit * 2, 30),  # fetch extra, filter down
+        "domains":     INDIA_DOMAINS,
         "apiKey":      api_key,
     }
 
@@ -161,14 +180,19 @@ async def news_search(
 
         articles = []
         for item in data.get("articles", []):
+            title = item.get("title", "") or ""
+            # Skip removed articles (NewsAPI placeholder)
+            if "[Removed]" in title:
+                continue
             articles.append({
-                "title":        item.get("title", ""),
+                "title":        title,
                 "url":          item.get("url", ""),
                 "source":       item.get("source", {}).get("name", "Unknown"),
                 "published_at": item.get("publishedAt", ""),
                 "summary":      (item.get("description") or "")[:300],
                 "sentiment":    None,
             })
+        articles = articles[:limit]
 
         if tag and articles:
             articles = await tag_articles_batch(articles, context=q)

@@ -454,7 +454,7 @@ async def ai_tag(
     context: str = Body("", embed=True, description="Stock or topic context"),
 ):
     """
-    Directly classify a single piece of text using gemma-4-31b-it.
+    Directly classify a single piece of text using llama-3.2-3b-instruct.
     Returns POSITIVE, NEGATIVE, or NEUTRAL.
     """
     if not text or len(text.strip()) < 3:
@@ -465,6 +465,6 @@ async def ai_tag(
         "text":      text[:100] + ("..." if len(text) > 100 else ""),
         "context":   context,
         "sentiment": sentiment,
-        "model":     "google/gemma-4-31b-it",
+        "model":     "meta/llama-3.2-3b-instruct",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }

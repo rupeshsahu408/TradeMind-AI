@@ -2,9 +2,9 @@
 NVIDIA NIM API client — OpenAI-compatible format.
 
 Models used:
-  - google/gemma-4-31b-it  → fast sentiment tagging, quick classifications
-  - openai/gpt-oss-120b    → deep analysis (Phase 4)
-  - google/paligemma       → chart image analysis (Phase 6)
+  - meta/llama-3.2-3b-instruct       → fast sentiment tagging, quick classifications
+  - meta/llama-3.3-70b-instruct      → deep analysis, AI chat (Phase 4)
+  - meta/llama-3.2-11b-vision-instruct → chart image analysis (Phase 6)
 
 All three share the same NVIDIA_API_KEY and base URL.
 """
@@ -15,9 +15,9 @@ from typing import Optional
 
 NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
 
-FAST_MODEL    = "google/gemma-4-31b-it"
-PRIMARY_MODEL = "openai/gpt-oss-120b"
-VISION_MODEL  = "google/paligemma"
+FAST_MODEL    = "meta/llama-3.2-3b-instruct"      # fast, reliable sentiment tagging
+PRIMARY_MODEL = "meta/llama-3.3-70b-instruct"     # deep analysis (Phase 4)
+VISION_MODEL  = "meta/llama-3.2-11b-vision-instruct"  # chart image analysis (Phase 6)
 
 
 def _get_key() -> str:
@@ -32,7 +32,7 @@ async def chat_complete(
     model: str = FAST_MODEL,
     temperature: float = 0.2,
     max_tokens: int = 256,
-    timeout: int = 30,
+    timeout: int = 60,
 ) -> Optional[str]:
     """
     Send a chat completion request to NVIDIA NIM.
@@ -69,18 +69,22 @@ async def chat_complete(
 async def tag_sentiment(text: str, context: str = "") -> str:
     """
     Classify a news headline/summary as POSITIVE, NEGATIVE, or NEUTRAL
-    for the Indian stock market context using gemma (fast model).
+    for the Indian stock market context using llama-3.2-3b (fast model).
 
     Returns: "POSITIVE" | "NEGATIVE" | "NEUTRAL"
     """
     system_prompt = (
         "You are a financial news sentiment classifier for Indian stock markets. "
-        "Classify the given text as POSITIVE, NEGATIVE, or NEUTRAL from a stock market perspective. "
-        "Reply with exactly one word: POSITIVE, NEGATIVE, or NEUTRAL. Nothing else."
+        "Your job: classify news as POSITIVE, NEGATIVE, or NEUTRAL for the given stock or topic.\n\n"
+        "Rules:\n"
+        "- POSITIVE: profit beats, record earnings, strong results, upgrades, FII buying, rate cuts, acquisitions at premium, dividend increases, new orders, market share gains\n"
+        "- NEGATIVE: profit miss, losses, downgrades, FII selling, crashes, fraud, regulatory action, CEO resignation, debt concerns, margin pressure, selloff\n"
+        "- NEUTRAL: board meetings scheduled, no change in ratings, general market commentary, routine filings, analyst watching\n\n"
+        "Reply with exactly ONE word only: POSITIVE, NEGATIVE, or NEUTRAL. No explanation."
     )
     user_content = f"Text: {text}"
     if context:
-        user_content = f"Stock/Topic: {context}\nText: {text}"
+        user_content = f"Stock/Topic: {context}\nClassify this news: {text}"
 
     result = await chat_complete(
         messages=[
@@ -88,11 +92,14 @@ async def tag_sentiment(text: str, context: str = "") -> str:
             {"role": "user",   "content": user_content},
         ],
         model=FAST_MODEL,
-        temperature=0.1,
-        max_tokens=5,
+        temperature=0.0,
+        max_tokens=8,
     )
-    if result and result.upper() in ("POSITIVE", "NEGATIVE", "NEUTRAL"):
-        return result.upper()
+    if result:
+        # Extract first word in case model adds punctuation or extra text
+        first_word = result.strip().split()[0].upper().rstrip(".,!?:")
+        if first_word in ("POSITIVE", "NEGATIVE", "NEUTRAL"):
+            return first_word
     return "NEUTRAL"
 
 
