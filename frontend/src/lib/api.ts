@@ -1,7 +1,12 @@
 // Central API client — all calls go through Node.js backend (/api/*)
 // Frontend never calls Python service directly.
-
-const BASE_URL = '/api';
+//
+// In development: Vite proxies /api → localhost:3001 (no env var needed)
+// In production:  VITE_API_URL must point to the Render backend base URL
+//                 e.g. https://billionaire-ai-backend.onrender.com
+const BASE_URL = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL}/api`
+  : '/api';
 
 function getToken(): string | null {
   return localStorage.getItem('session_token');
@@ -214,7 +219,12 @@ export interface MacroSnapshot {
   commodities:    Record<string, CommodityItem>;
   forex:          Record<string, ForexItem>;
   global_indices: Record<string, GlobalIndexItem>;
-  gift_nifty:     { gift_nifty_approx: number; direction: string; gap_vs_prev_close_pct: number };
+  gift_nifty:     {
+    gift_nifty_approx: number;
+    direction: string;
+    gap_vs_prev_close_pct: number;
+    sp500_futures_change_pct?: number;
+  };
   timestamp: string;
 }
 

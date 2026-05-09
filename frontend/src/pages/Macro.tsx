@@ -226,7 +226,9 @@ function GiftNiftyCard() {
         </p>
         <p className="text-[10px] text-muted-foreground mt-0.5">
           Gap: {gn.gap_vs_prev_close_pct >= 0 ? '+' : ''}{gn.gap_vs_prev_close_pct}% vs prev close •{' '}
-          S&P 500 futures: {gn.sp500_futures_change_pct >= 0 ? '+' : ''}{gn.sp500_futures_change_pct}%
+          {gn.sp500_futures_change_pct != null && (
+            <>S&P 500 futures: {gn.sp500_futures_change_pct >= 0 ? '+' : ''}{gn.sp500_futures_change_pct}%</>
+          )}
         </p>
       </div>
       <div className={cn(
