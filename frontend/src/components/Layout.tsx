@@ -104,19 +104,19 @@ export default function Layout({ children }: LayoutProps) {
           {navItems.map(({ label, href, icon: Icon }) => {
             const isActive = location === href || (href !== '/' && location.startsWith(href));
             return (
-              <Link key={href} href={href}>
-                <a
-                  className={cn(
-                    'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors mb-0.5',
-                    isActive
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-accent'
-                  )}
-                  onClick={() => setSidebarOpen(false)}
-                >
-                  <Icon className="w-4 h-4 flex-shrink-0" />
-                  <span className="truncate">{label}</span>
-                </a>
+                <Link
+                key={href}
+                href={href}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors mb-0.5',
+                  isActive
+                    ? 'bg-primary/10 text-primary font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+                )}
+                onClick={() => setSidebarOpen(false)}
+              >
+                <Icon className="w-4 h-4 flex-shrink-0" />
+                <span className="truncate">{label}</span>
               </Link>
             );
           })}

@@ -128,6 +128,17 @@ async def market_quote(ticker: str = Query(..., description="NSE ticker e.g. REL
         chg_pct  = round((change / prev * 100) if prev else 0, 2)
         week52   = pi.get("weekHighLow", {})
 
+        # Volume: try quantityTraded first, then totalTradedVolume
+        raw_vol = pi.get("quantityTraded") or pi.get("totalTradedVolume") or 0
+        volume = int(float(raw_vol) if raw_vol else 0)
+
+        # Market cap: try NSE tradedVolume * price fallback via Screener
+        mkt_cap_str = nse_data.get("marketDeptOrderBook", {}).get("tradeInfo", {}).get("totalBuyQuantity", 0)
+        try:
+            market_cap = float(nse_data.get("securityInfo", {}).get("issuedSize", 0) or 0) * price
+        except Exception:
+            market_cap = 0
+
         result = {
             "ticker":       ticker,
             "company":      info.get("companyName", base_symbol),
@@ -135,8 +146,8 @@ async def market_quote(ticker: str = Query(..., description="NSE ticker e.g. REL
             "price":        price,
             "change":       change,
             "change_pct":   chg_pct,
-            "volume":       int(pi.get("quantityTraded", 0) or 0),
-            "market_cap":   0,
+            "volume":       volume,
+            "market_cap":   round(market_cap, 0),
             "day_high":     float(pi.get("intraDayHighLow", {}).get("max", 0) or 0),
             "day_low":      float(pi.get("intraDayHighLow", {}).get("min", 0) or 0),
             "week_52_high": float(week52.get("max", 0) or 0),

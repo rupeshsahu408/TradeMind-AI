@@ -152,19 +152,17 @@ async def news_search(
     from_dt = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Scope to major Indian financial news domains for relevance
-    INDIA_DOMAINS = (
-        "economictimes.indiatimes.com,livemint.com,moneycontrol.com,"
-        "financialexpress.com,business-standard.com,ndtv.com,"
-        "thehindu.com,hindustantimes.com,zeebiz.com,cnbctv18.com,"
-        "businesstoday.in,bloombergquint.com,reuters.com,bloomberg.com"
-    )
+    # Add India financial context to keep results relevant to Indian markets
+    india_terms = ["NSE", "BSE", "Sensex", "Nifty", "India", "SEBI", "RBI"]
+    has_india_context = any(t.lower() in q.lower() for t in india_terms)
+    search_q = q if has_india_context else f"{q} India stock"
+
     params = {
-        "q":           q,
+        "q":           search_q,
         "from":        from_dt,
         "language":    "en",
-        "sortBy":      "relevancy",
-        "pageSize":    min(limit * 2, 30),  # fetch extra, filter down
-        "domains":     INDIA_DOMAINS,
+        "sortBy":      "publishedAt",
+        "pageSize":    min(limit * 2, 30),
         "apiKey":      api_key,
     }
 
