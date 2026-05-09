@@ -1,16 +1,21 @@
-// Load .env file if present (local dev). On Replit/Vercel, secrets are injected automatically.
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
 const { Pool } = require('pg');
 const { drizzle } = require('drizzle-orm/node-postgres');
 const schema = require('./schema');
 
-if (!process.env.DATABASE_URL) {
-  console.error('[DB] ERROR: DATABASE_URL is not set. Check your .env file.');
+// NEON_DATABASE_URL = user's self-managed Neon PostgreSQL (always preferred).
+// DATABASE_URL is Replit's managed database — used only as last resort.
+const connectionString = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL;
+
+if (!connectionString) {
+  console.error('[DB] ERROR: NEON_DATABASE_URL is not set. Add it in Replit Secrets.');
   process.exit(1);
 }
 
+console.log('[DB] Using:', connectionString.includes('neon.tech') ? 'Neon PostgreSQL (user database)' : 'Replit managed database');
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString,
   ssl: {
     rejectUnauthorized: false,
   },

@@ -1,5 +1,18 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
-const { pool } = require('./index');
+
+const { Pool } = require('pg');
+
+const connectionString = process.env.NEON_DATABASE_URL || process.env.DATABASE_URL;
+
+if (!connectionString) {
+  console.error('[Migrate] ERROR: NEON_DATABASE_URL is not set.');
+  process.exit(1);
+}
+
+const pool = new Pool({
+  connectionString,
+  ssl: { rejectUnauthorized: false },
+});
 
 const migrations = `
   CREATE TABLE IF NOT EXISTS users (
@@ -100,7 +113,8 @@ const migrations = `
 `;
 
 async function runMigrations() {
-  console.log('[Migrate] Running database migrations...');
+  console.log('[Migrate] Connecting to Neon PostgreSQL...');
+  console.log('[Migrate] Host:', connectionString.split('@')[1]?.split('/')[0] || 'unknown');
   try {
     await pool.query(migrations);
     console.log('[Migrate] All 9 tables created/verified successfully.');
