@@ -1,5 +1,5 @@
 // Load .env file if present (local dev). On Replit/Vercel, secrets are injected automatically.
-require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
+require('dotenv').config({ path: require('path').resolve(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const { testConnection } = require('./db/index');
