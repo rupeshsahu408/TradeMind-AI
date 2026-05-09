@@ -6,7 +6,8 @@ import {
   ExternalLink, Clock,
 } from 'lucide-react';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  AreaChart, Area, BarChart, Bar, Cell,
+  XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import { cn } from '../lib/utils';
 import {
@@ -62,6 +63,21 @@ interface TrendsRow {
 
 interface FiiRow { fii_net: number | null; dii_net: number | null; market_mood: string }
 
+interface YouTubeRow {
+  status: string;
+  total: number;
+  videos: Array<{
+    title: string; channel: string; published_at: string;
+    url: string; thumbnail: string; sentiment: string | null;
+  }>;
+}
+
+interface EarningsRow {
+  quarterly: Array<{ metric: string; data: Record<string, string> }>;
+  next_earnings: string | null;
+  source: string;
+}
+
 interface StockPageData {
   quote: QuoteRow | null;
   fundamentals: FundRow | null;
@@ -71,6 +87,8 @@ interface StockPageData {
   fiiDii: FiiRow | null;
   reddit: RedditRow | null;
   trends: TrendsRow | null;
+  youtube: YouTubeRow | null;
+  earnings: EarningsRow | null;
 }
 
 // ─── Chart periods ────────────────────────────────────────────────────────────
@@ -400,7 +418,9 @@ function PriceChart({ ticker }: { ticker: string }) {
 
 // ─── Technical Card ───────────────────────────────────────────────────────────
 
-function TechnicalCard({ tech }: { tech: TechRow | null }) {
+function TechnicalCard({ tech, quote, fund }: {
+  tech: TechRow | null; quote: QuoteRow | null; fund: FundRow | null;
+}) {
   if (!tech) return (
     <Card title="Technical Indicators" icon={Activity}>
       <p className="text-xs text-muted-foreground">Technical data unavailable. Alpha Vantage key may not be configured.</p>
@@ -420,17 +440,40 @@ function TechnicalCard({ tech }: { tech: TechRow | null }) {
     if (v > 70) return 'Overbought';
     if (v < 30) return 'Oversold';
     if (v >= 55) return 'Bullish Zone';
-    if (v >= 40) return 'Neutral';
     return 'Neutral';
   }
+
+  // ── Trend Direction (price vs 50D / 200D averages) ──
+  const price = quote?.price ?? 0;
+  const f50D  = fund?.fifty_day_avg ?? 0;
+  const f200D = fund?.two_hundred_day_avg ?? 0;
+  let trendDir   = '';
+  let trendStyle = '';
+  if (price > 0 && f50D > 0 && f200D > 0) {
+    if      (price > f50D && f50D > f200D) { trendDir = 'UPTREND';   trendStyle = 'bg-bull/10 text-bull'; }
+    else if (price < f50D && f50D < f200D) { trendDir = 'DOWNTREND'; trendStyle = 'bg-bear/10 text-bear'; }
+    else                                    { trendDir = 'SIDEWAYS';  trendStyle = 'bg-amber-500/10 text-amber-500'; }
+  }
+
+  // ── Support & Resistance (Fibonacci on 52-Week range) ──
+  const w52H  = (fund?.week_52_high ?? 0) || (quote?.week_52_high ?? 0);
+  const w52L  = (fund?.week_52_low  ?? 0) || (quote?.week_52_low  ?? 0);
+  const range = w52H - w52L;
+  const support    = range > 0 ? w52L + range * 0.382 : null;
+  const resistance = range > 0 ? w52L + range * 0.618 : null;
 
   return (
     <Card title="Technical Indicators" icon={Activity}>
       <div className="space-y-4">
 
-        {/* Overall signal badge */}
-        <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-secondary/50">
-          <span className="text-xs text-muted-foreground font-medium">Overall Signal</span>
+        {/* Overall signal + Trend direction */}
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary/50">
+          <span className="text-xs text-muted-foreground font-medium flex-1">Overall Signal</span>
+          {trendDir && (
+            <span className={cn('text-[10px] font-bold px-2 py-0.5 rounded-full', trendStyle)}>
+              {trendDir}
+            </span>
+          )}
           <span className={cn(
             'text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wide',
             sig === 'bullish' ? 'bg-bull/10 text-bull'
@@ -448,12 +491,10 @@ function TechnicalCard({ tech }: { tech: TechRow | null }) {
               <span className="text-xs font-semibold text-foreground">RSI (14)</span>
               <span className={cn('text-lg font-bold font-mono', rsiTextColor)}>{rsi.rsi}</span>
             </div>
-            {/* Zone bar */}
             <div className="relative h-3 rounded-full bg-secondary overflow-hidden">
               <div className="absolute inset-y-0 left-0 rounded-l-full" style={{ width: '30%', background: 'rgba(34,197,94,0.18)' }} />
               <div className="absolute inset-y-0"                        style={{ left: '30%', width: '40%', background: 'rgba(245,158,11,0.08)' }} />
               <div className="absolute inset-y-0 right-0 rounded-r-full" style={{ width: '30%', background: 'rgba(239,68,68,0.18)' }} />
-              {/* Indicator dot */}
               <div
                 className="absolute top-0.5 bottom-0.5 w-2 rounded-full shadow border border-background/60"
                 style={{ left: `calc(${Math.min(Math.max(rsi.rsi, 1), 99)}% - 4px)`, backgroundColor: rsiDotColor }}
@@ -498,6 +539,25 @@ function TechnicalCard({ tech }: { tech: TechRow | null }) {
           </div>
         )}
 
+        {/* Support / Resistance */}
+        {support !== null && resistance !== null && (
+          <div className="pt-2 border-t border-border/50">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+              Key Levels <span className="font-normal normal-case">(Fibonacci on 52W range)</span>
+            </p>
+            <div className="grid grid-cols-2 gap-1.5">
+              <div className="py-2 px-3 rounded-md bg-bull/5 border border-bull/20">
+                <p className="text-[9px] text-muted-foreground">Support (38.2%)</p>
+                <p className="text-xs font-bold font-mono text-bull">₹{fmt(support, 0)}</p>
+              </div>
+              <div className="py-2 px-3 rounded-md bg-bear/5 border border-bear/20">
+                <p className="text-[9px] text-muted-foreground">Resistance (61.8%)</p>
+                <p className="text-xs font-bold font-mono text-bear">₹{fmt(resistance, 0)}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {!rsi && !macd && (
           <p className="text-xs text-muted-foreground">RSI and MACD data unavailable.</p>
         )}
@@ -530,7 +590,7 @@ function FundamentalsCard({ fund }: { fund: FundRow | null }) {
   const excludeKeys = new Set([
     'Stock P/E', 'P/E', 'Price to Book value', 'Price to book', 'Market Cap', 'Market cap',
     'Dividend Yield', 'Div yield', 'ROCE', 'Return on capital employed', 'ROE', 'Return on equity',
-    'EPS', 'Book Value', 'Book value',
+    'EPS', 'Book Value', 'Book value', 'Current Price', 'High / Low',
   ]);
   const extras = Object.entries(fund.screener_raw || {})
     .filter(([k]) => !excludeKeys.has(k))
@@ -559,6 +619,83 @@ function FundamentalsCard({ fund }: { fund: FundRow | null }) {
         </div>
       )}
       <p className="text-[10px] text-muted-foreground mt-2">Source: Screener.in · NSE India · Yahoo Finance</p>
+    </Card>
+  );
+}
+
+// ─── Earnings Card ────────────────────────────────────────────────────────────
+
+function EarningsCard({ earnings }: { earnings: EarningsRow | null }) {
+  if (!earnings) return null;
+
+  const salesMetric = earnings.quarterly.find(q => q.metric.startsWith('Sales'));
+  if (!salesMetric) return null;
+
+  const allEntries = Object.entries(salesMetric.data);
+  const entries = allEntries.slice(-6).map(([q, val]) => ({
+    quarter: q.replace(/ 20(\d\d)$/, "'$1"),
+    value:   parseInt(val.replace(/,/g, ''), 10),
+  })).filter(e => !isNaN(e.value) && e.value > 0);
+
+  if (entries.length < 2) return null;
+
+  const latest    = entries[entries.length - 1];
+  const prev      = entries[entries.length - 2];
+  const qoqChange = ((latest.value - prev.value) / prev.value) * 100;
+  const isGrowing = latest.value >= entries[0].value;
+
+  return (
+    <Card title="Quarterly Revenue" icon={BarChart2}>
+      <div className="space-y-3">
+        <ResponsiveContainer width="100%" height={100}>
+          <BarChart data={entries} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} barCategoryGap="20%">
+            <XAxis
+              dataKey="quarter"
+              tick={{ fontSize: 8, fill: '#888' }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis hide domain={['auto', 'auto']} />
+            <Tooltip
+              contentStyle={{
+                background: 'hsl(var(--card))',
+                border: '1px solid hsl(var(--border))',
+                borderRadius: '8px',
+                fontSize: '10px',
+                padding: '4px 8px',
+              }}
+              formatter={(v: number) => [fmtCr(v), 'Revenue']}
+            />
+            <Bar dataKey="value" radius={[3, 3, 0, 0]}>
+              {entries.map((_, i) => (
+                <Cell
+                  key={i}
+                  fill={i === entries.length - 1
+                    ? (isGrowing ? '#22c55e' : '#ef4444')
+                    : 'hsl(var(--primary) / 0.35)'}
+                />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+
+        <div className="flex items-center justify-between px-1">
+          <div>
+            <p className="text-[10px] text-muted-foreground">Latest ({latest.quarter})</p>
+            <p className="text-sm font-bold font-mono text-foreground">{fmtCr(latest.value)}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-muted-foreground">QoQ Change</p>
+            <p className={cn('text-sm font-bold font-mono', qoqChange >= 0 ? 'text-bull' : 'text-bear')}>
+              {qoqChange >= 0 ? '+' : ''}{qoqChange.toFixed(1)}%
+            </p>
+          </div>
+        </div>
+
+        <p className="text-[10px] text-muted-foreground">
+          Source: {earnings.source} · Consolidated quarterly sales (₹ Cr)
+        </p>
+      </div>
     </Card>
   );
 }
@@ -607,16 +744,23 @@ function NewsCard({ news }: { news: NewsRow[] }) {
 
 // ─── Social Card ──────────────────────────────────────────────────────────────
 
-function SocialCard({ reddit, trends }: { reddit: RedditRow | null; trends: TrendsRow | null }) {
-  const hasReddit = reddit && reddit.status !== 'unavailable' && reddit.mention_count > 0;
-  const hasTrends = trends && trends.status === 'ok';
+function SocialCard({ reddit, trends, youtube }: {
+  reddit: RedditRow | null; trends: TrendsRow | null; youtube: YouTubeRow | null;
+}) {
+  const hasReddit  = reddit  && reddit.status  !== 'unavailable' && reddit.mention_count > 0;
+  const hasTrends  = trends  && trends.status  === 'ok';
+  const hasYoutube = youtube && youtube.status === 'ok' && (youtube.total ?? 0) > 0;
+  const hasSomething = hasReddit || hasTrends || hasYoutube;
+
+  const trendColor = trends?.direction === 'rising'  ? '#22c55e'
+                   : trends?.direction === 'falling' ? '#ef4444' : '#f59e0b';
 
   return (
     <Card title="Social Sentiment" icon={Users}>
-      {!hasReddit && !hasTrends ? (
+      {!hasSomething ? (
         <div>
           <p className="text-xs text-muted-foreground">
-            Social data requires Reddit API credentials.
+            Social data requires API credentials (Reddit, YouTube).
           </p>
           {reddit?.reason && (
             <p className="text-[10px] text-muted-foreground/60 mt-1">{reddit.reason}</p>
@@ -663,9 +807,37 @@ function SocialCard({ reddit, trends }: { reddit: RedditRow | null; trends: Tren
             </div>
           )}
 
+          {/* YouTube */}
+          {hasYoutube && youtube && (
+            <div className={cn(hasReddit ? 'pt-3 border-t border-border/50' : '')}>
+              <span className="text-xs font-semibold text-foreground">YouTube</span>
+              <div className="space-y-1.5 mt-2">
+                {youtube.videos.slice(0, 3).map((v, i) => (
+                  <div key={i} className="py-1.5 px-2 rounded-md bg-secondary/30">
+                    <div className="flex items-start justify-between gap-2">
+                      <a
+                        href={v.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-medium text-foreground hover:text-primary transition-colors leading-snug flex-1"
+                      >
+                        {v.title.slice(0, 80)}{v.title.length > 80 ? '…' : ''}
+                        <ExternalLink className="inline w-2.5 h-2.5 ml-0.5 text-muted-foreground" />
+                      </a>
+                      <SentBadge s={v.sentiment?.toUpperCase() ?? null} />
+                    </div>
+                    <p className="text-[9px] text-muted-foreground mt-0.5">
+                      {v.channel} · {fmtDate(v.published_at)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Google Trends */}
           {hasTrends && trends && (
-            <div className={hasReddit ? 'pt-3 border-t border-border/50' : ''}>
+            <div className={cn((hasReddit || hasYoutube) ? 'pt-3 border-t border-border/50' : '')}>
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-xs font-semibold text-foreground">Google Trends (7-day)</span>
                 {trends.direction && (
@@ -679,13 +851,44 @@ function SocialCard({ reddit, trends }: { reddit: RedditRow | null; trends: Tren
                   </span>
                 )}
               </div>
+              {/* Sparkline chart */}
+              {trends.history && trends.history.length > 1 && (
+                <ResponsiveContainer width="100%" height={40}>
+                  <AreaChart data={trends.history} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="trendsGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%"   stopColor={trendColor} stopOpacity={0.3} />
+                        <stop offset="100%" stopColor={trendColor} stopOpacity={0}   />
+                      </linearGradient>
+                    </defs>
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke={trendColor}
+                      strokeWidth={1.5}
+                      fill="url(#trendsGrad)"
+                      dot={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
               {trends.peak_score != null && (
-                <p className="text-[10px] text-muted-foreground">
-                  Peak score: {trends.peak_score} · Current: {trends.current ?? '--'}
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  Peak: {trends.peak_score} · Current: {trends.current ?? '--'}
                 </p>
               )}
             </div>
           )}
+
+          {/* Twitter/X — always show as unavailable */}
+          <div className="pt-3 border-t border-border/50">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-foreground">Twitter / X</span>
+              <span className="text-[10px] bg-secondary text-muted-foreground px-2 py-0.5 rounded-full">Unavailable</span>
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1">OAuth credentials required.</p>
+          </div>
+
         </div>
       )}
     </Card>
@@ -848,6 +1051,11 @@ function SignalStackCard({ stack }: { stack: SignalStack }) {
         <div className="h-full bg-bull rounded-full transition-all duration-700" style={{ width: `${(stack.bullishCount / 5) * 100}%` }} />
       </div>
       <p className="text-[10px] text-muted-foreground">{stack.bullishCount}/5 bullish · {stack.bearishCount}/5 bearish</p>
+      {stack.confidence >= 90 && (
+        <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+          <p className="text-xs font-bold text-amber-500">Write this down. High conviction call.</p>
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2">
         {stack.signals.map(s => <SignalPill key={s.name} signal={s} />)}
       </div>
@@ -933,7 +1141,8 @@ export default function Stock() {
       // Show price data immediately while rest loads
       setStockData({
         quote, fundamentals: fund,
-        technical: null, news: [], options: null, fiiDii: null, reddit: null, trends: null,
+        technical: null, news: [], options: null, fiiDii: null,
+        reddit: null, trends: null, youtube: null, earnings: null,
       });
 
       // Build the best possible news query using company name
@@ -945,7 +1154,7 @@ export default function Stock() {
         .trim();
 
       // ── Phase 2: All remaining data in parallel, with smart news query ──
-      const [rTech, rNews, rOpts, rFii, rReddit, rTrends] =
+      const [rTech, rNews, rOpts, rFii, rReddit, rTrends, rYoutube, rEarnings] =
         await Promise.allSettled([
           technicalApi.summary(ns),
           newsApi.search(newsQuery, 72, true),
@@ -953,6 +1162,8 @@ export default function Stock() {
           nseApi.fiiDii(),
           sentimentApi.reddit(sym),
           sentimentApi.trends(sym, 7),
+          sentimentApi.youtube(sym, 3),
+          marketApi.earnings(ns),
         ]);
 
       const g = <T,>(r: PromiseSettledResult<T>): T | null =>
@@ -961,12 +1172,14 @@ export default function Stock() {
       setStockData({
         quote,
         fundamentals: fund,
-        technical:    g(rTech)   as TechRow | null,
-        news:         ((g(rNews) as unknown as { articles?: NewsRow[] })?.articles ?? []),
-        options:      g(rOpts)   as OptionsRow | null,
-        fiiDii:       g(rFii)    as FiiRow | null,
-        reddit:       g(rReddit) as RedditRow | null,
-        trends:       g(rTrends) as TrendsRow | null,
+        technical:    g(rTech)    as TechRow    | null,
+        news:         ((g(rNews)  as unknown as { articles?: NewsRow[] })?.articles ?? []),
+        options:      g(rOpts)    as OptionsRow | null,
+        fiiDii:       g(rFii)     as FiiRow     | null,
+        reddit:       g(rReddit)  as RedditRow  | null,
+        trends:       g(rTrends)  as TrendsRow  | null,
+        youtube:      g(rYoutube) as YouTubeRow | null,
+        earnings:     g(rEarnings) as EarningsRow | null,
       });
     } finally {
       setDataLoading(false);
@@ -1149,7 +1362,11 @@ export default function Stock() {
                   <div className="p-4 space-y-3">{[1,2,3].map(i => <Sk key={i} className="h-10" />)}</div>
                 </div>
               ) : (
-                <TechnicalCard tech={stockData?.technical ?? null} />
+                <TechnicalCard
+                  tech={stockData?.technical ?? null}
+                  quote={stockData?.quote ?? null}
+                  fund={stockData?.fundamentals ?? null}
+                />
               )}
               {dataLoading && !stockData?.fundamentals ? (
                 <div className="bg-card border border-border rounded-xl">
@@ -1160,6 +1377,9 @@ export default function Stock() {
                 <FundamentalsCard fund={stockData?.fundamentals ?? null} />
               )}
             </div>
+
+            {/* Quarterly Revenue */}
+            <EarningsCard earnings={stockData?.earnings ?? null} />
 
             {/* News */}
             {dataLoading && !stockData?.news?.length ? (
@@ -1173,7 +1393,7 @@ export default function Stock() {
 
             {/* Social + Institutional */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <SocialCard reddit={stockData?.reddit ?? null} trends={stockData?.trends ?? null} />
+              <SocialCard reddit={stockData?.reddit ?? null} trends={stockData?.trends ?? null} youtube={stockData?.youtube ?? null} />
               <InstitutionalCard fiiDii={stockData?.fiiDii ?? null} options={stockData?.options ?? null} />
             </div>
 
@@ -1211,9 +1431,15 @@ export default function Stock() {
                 </div>
                 <MarkdownRenderer content={content} streaming={streaming} />
                 {!streaming && (
-                  <p className="text-[10px] text-muted-foreground mt-5 pt-3 border-t border-border/50">
-                    For informational purposes only. Not financial advice.
-                  </p>
+                  <div className="mt-5 pt-3 border-t border-border/50 space-y-1">
+                    <p className="text-[10px] text-muted-foreground">
+                      For informational purposes only. Not financial advice.
+                    </p>
+                    <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                      <span className="text-bull">✓</span>
+                      Prediction auto-logged to Accuracy Tracker
+                    </p>
+                  </div>
                 )}
               </div>
             )}

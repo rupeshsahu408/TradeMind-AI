@@ -194,26 +194,39 @@ async function buildStockContext(ticker) {
   const sym       = ticker.replace('.NS', '').replace('.BO', '').toUpperCase();
   const nseTicker = `${sym}.NS`;
 
-  const [quote, fundamentals, techSummary, news, fiiDii, options] =
+  // Phase 1: Quote + Fundamentals first to extract company name for better news search
+  const [rQuote, rFund] = await Promise.allSettled([
+    pythonGet(`/market/quote?ticker=${nseTicker}`),
+    pythonGet(`/market/fundamentals?ticker=${nseTicker}`),
+  ]);
+
+  const get = r => (r.status === 'fulfilled' ? r.value : null);
+  const quoteData = get(rQuote);
+  const fundData  = get(rFund);
+
+  // Use company name (stripped of Ltd/Limited) for more relevant news
+  const rawCo = fundData?.company || quoteData?.company || sym;
+  const newsQuery = rawCo
+    .replace(/\s+(Limited|Ltd\.?|Inc\.?|Corp\.?|Industries|Enterprises|Technologies)$/i, '')
+    .trim();
+
+  // Phase 2: All remaining data with improved news query (72h window)
+  const [techSummary, news, fiiDii, options] =
     await Promise.allSettled([
-      pythonGet(`/market/quote?ticker=${nseTicker}`),
-      pythonGet(`/market/fundamentals?ticker=${nseTicker}`),
       pythonGet(`/technical/summary?ticker=${nseTicker}`),
-      pythonGet(`/news/search?q=${encodeURIComponent(sym)}&hours=24&tag=true&limit=6`),
+      pythonGet(`/news/search?q=${encodeURIComponent(newsQuery)}&hours=72&tag=true&limit=8`),
       pythonGet('/nse/fii-dii'),
       pythonGet(`/nse/options?ticker=${sym}`),
     ]);
 
-  const get = r => (r.status === 'fulfilled' ? r.value : null);
-
   return {
-    ticker: sym,
-    quote: get(quote),
-    fundamentals: get(fundamentals),
-    technical: get(techSummary),
-    news: get(news),
-    fiiDii: get(fiiDii),
-    options: get(options),
+    ticker:       sym,
+    quote:        quoteData,
+    fundamentals: fundData,
+    technical:    get(techSummary),
+    news:         get(news),
+    fiiDii:       get(fiiDii),
+    options:      get(options),
   };
 }
 

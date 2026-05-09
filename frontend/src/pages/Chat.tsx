@@ -9,7 +9,7 @@ import { aiApi, SignalStack } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 
-const uuidv4 = () => crypto.randomUUID();
+const uuidv4 = (): string => crypto.randomUUID();
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
