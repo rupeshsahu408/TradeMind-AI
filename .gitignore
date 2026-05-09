@@ -38,5 +38,10 @@ __pycache__/
 # .replit — keep
 # replit.nix — keep
 
+# Environment secrets — never commit these
+.env
+backend/.env
+data-service/.env
+
 # NOTE: .env.example IS committed (contains your Neon DB URL and key references)
 # Add your actual secrets to .env.example and rename to .env on each deployment target
