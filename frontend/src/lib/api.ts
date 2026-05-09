@@ -283,6 +283,158 @@ export const newsApi = {
     api.get<NewsSearchResult>(`/news/google?q=${encodeURIComponent(q)}&hours=${hours}&tag=${tag}`),
 };
 
+// ─── AI Intelligence — Phase 4 ───────────────────────────────────────────────
+
+export interface SignalEntry {
+  name: string;
+  value: 'BULLISH' | 'BEARISH' | 'NEUTRAL';
+  detail: string;
+}
+
+export interface SignalStack {
+  signals: SignalEntry[];
+  bullishCount: number;
+  bearishCount: number;
+  confidence: number;
+  verdict: string;
+}
+
+function getSessionToken(): string {
+  return localStorage.getItem('session_token') || '';
+}
+
+/**
+ * Generic SSE streaming helper.
+ * Calls the backend SSE endpoint and dispatches events:
+ *   onToken(token)       — each streamed token
+ *   onMeta(key, value)   — structured metadata (signal_stack, type events)
+ *   onDone()             — stream finished
+ *   onError(msg)         — error message from server or network
+ */
+export function streamSSE(
+  path: string,
+  body: unknown,
+  options: {
+    onToken: (token: string) => void;
+    onMeta?: (key: string, value: unknown) => void;
+    onDone: () => void;
+    onError: (msg: string) => void;
+    signal?: AbortSignal;
+  },
+): void {
+  const { onToken, onMeta, onDone, onError, signal } = options;
+  const url = BASE_URL + path;
+
+  fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-session-token': getSessionToken(),
+    },
+    body: JSON.stringify(body),
+    signal,
+  })
+    .then(async (res) => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+        onError(err.error || `HTTP ${res.status}`);
+        onDone();
+        return;
+      }
+
+      const reader  = res.body!.getReader();
+      const decoder = new TextDecoder();
+      let buffer    = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data:')) continue;
+          const data = trimmed.slice(5).trim();
+
+          if (data === '[DONE]') {
+            onDone();
+            return;
+          }
+
+          try {
+            const parsed = JSON.parse(data) as Record<string, unknown>;
+
+            if (parsed.error) {
+              onError(parsed.error as string);
+              continue;
+            }
+            if (parsed.token != null) {
+              onToken(parsed.token as string);
+              continue;
+            }
+            // Structured metadata events
+            if (parsed.type && onMeta) {
+              onMeta(parsed.type as string, (parsed as { data?: unknown }).data);
+            }
+          } catch {
+            // skip malformed lines
+          }
+        }
+      }
+
+      onDone();
+    })
+    .catch((err: Error) => {
+      if (err.name !== 'AbortError') {
+        onError(err.message || 'Connection error.');
+      }
+      onDone();
+    });
+}
+
+export const aiApi = {
+  chat: (
+    message: string,
+    history: Array<{ role: string; content: string }>,
+    sessionId: string,
+    options: Parameters<typeof streamSSE>[2],
+  ) => streamSSE('/chat', { message, history, sessionId }, options),
+
+  analyze: (
+    ticker: string,
+    options: Parameters<typeof streamSSE>[2],
+  ) => streamSSE('/analyze', { ticker }, options),
+
+  briefing: (options: Parameters<typeof streamSSE>[2]) =>
+    streamSSE('/briefing', {}, options),
+
+  macroAnalysis: (options: Parameters<typeof streamSSE>[2]) =>
+    streamSSE('/macro-analysis', {}, options),
+
+  sectorAnalysis: (
+    sector: string,
+    options: Parameters<typeof streamSSE>[2],
+  ) => streamSSE('/sector-analysis', { sector }, options),
+
+  chatHistory: (params?: { limit?: number; session_id?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.limit)      q.set('limit', String(params.limit));
+    if (params?.session_id) q.set('session_id', params.session_id);
+    return api.get<{ history: Array<{ id: number; session_id: string; role: string; content: string; created_at: string }> }>(
+      `/chat-history${q.toString() ? '?' + q.toString() : ''}`,
+    );
+  },
+
+  briefings: () =>
+    api.get<{ briefings: Array<{ id: number; market_mood: string; fii_net_flow: string; generated_at: string }> }>('/briefings'),
+
+  predictions: () =>
+    api.get<{ predictions: unknown[] }>('/predictions'),
+};
+
 // ─── Sentiment ────────────────────────────────────────────────────────────────
 
 export interface RedditSentiment {

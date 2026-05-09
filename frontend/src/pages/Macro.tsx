@@ -1,7 +1,9 @@
-import React from 'react';
-import { Globe, TrendingUp, TrendingDown, DollarSign, BarChart2, RefreshCw, AlertCircle } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Globe, TrendingUp, TrendingDown, DollarSign, BarChart2, RefreshCw, AlertCircle, Zap, Square } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useCommodities, useForex, useGlobalIndices, useMacroSnapshot } from '../hooks/useMarketData';
+import { aiApi } from '../lib/api';
+import MarkdownRenderer from '../components/MarkdownRenderer';
 
 function fmt(n: number | null | undefined, decimals = 2): string {
   if (n === null || n === undefined || n === 0) return '--';
@@ -241,6 +243,97 @@ function GiftNiftyCard() {
   );
 }
 
+// ─── AI Macro Analysis section ───────────────────────────────────────────────
+
+function MacroAISection() {
+  const [content, setContent]     = useState('');
+  const [fetching, setFetching]   = useState(false);
+  const [streaming, setStreaming] = useState(false);
+  const [error, setError]         = useState('');
+  const [done, setDone]           = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const STATUS = ['Reading Rupee levels...', 'Checking crude oil impact...', 'Analysing global risk signals...', 'Preparing AI verdict...'];
+  const [statusIdx, setStatusIdx] = useState(0);
+
+  React.useEffect(() => {
+    if (!fetching) { setStatusIdx(0); return; }
+    const t = setInterval(() => setStatusIdx(i => (i + 1) % STATUS.length), 1800);
+    return () => clearInterval(t);
+  }, [fetching]);
+
+  function run() {
+    if (fetching || streaming) return;
+    abortRef.current?.abort();
+    setContent(''); setError(''); setDone(false);
+    setFetching(true); setStreaming(false);
+    const abort = new AbortController();
+    abortRef.current = abort;
+
+    aiApi.macroAnalysis({
+      signal: abort.signal,
+      onMeta: (key) => {
+        if (key === 'fetching')     { setFetching(true);  setStreaming(false); }
+        if (key === 'stream_start') { setFetching(false); setStreaming(true);  }
+      },
+      onToken: (t) => { setFetching(false); setStreaming(true); setContent(prev => prev + t); },
+      onDone:  ()  => { setStreaming(false); setFetching(false); setDone(true); abortRef.current = null; },
+      onError: (m) => { setError(m); setFetching(false); setStreaming(false); },
+    });
+  }
+
+  function stop() {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setFetching(false); setStreaming(false); setDone(!!content);
+  }
+
+  const isActive = fetching || streaming;
+
+  return (
+    <section className="trading-card space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Zap className="w-4 h-4 text-primary" />
+          <h2 className="text-sm font-semibold text-foreground">AI Macro Impact Analysis</h2>
+          <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">NVIDIA LLM</span>
+        </div>
+        {isActive ? (
+          <button onClick={stop} className="flex items-center gap-1 text-xs text-bear border border-bear/20 px-2.5 py-1 rounded-md hover:bg-bear/5 transition-colors">
+            <Square className="w-3 h-3 fill-current" /> Stop
+          </button>
+        ) : (
+          <button onClick={run} className="flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-md hover:bg-primary/90 transition-colors font-medium active:scale-95">
+            <Zap className="w-3 h-3" />{done ? 'Re-analyse' : 'Analyse Macro'}
+          </button>
+        )}
+      </div>
+
+      {!content && !fetching && !error && (
+        <p className="text-xs text-muted-foreground">
+          Click "Analyse Macro" to get an AI-powered breakdown of how current Rupee, crude, and global conditions affect Indian equity sectors.
+        </p>
+      )}
+
+      {fetching && !content && (
+        <div className="flex items-center gap-2 py-2">
+          <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin flex-shrink-0" />
+          <p className="text-xs text-muted-foreground animate-fade-in" key={statusIdx}>{STATUS[statusIdx]}</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-start gap-2 p-3 rounded-lg border border-bear/20 bg-bear/5">
+          <AlertCircle className="w-4 h-4 text-bear flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-muted-foreground">{error}</p>
+        </div>
+      )}
+
+      {content && <MarkdownRenderer content={content} streaming={streaming} />}
+    </section>
+  );
+}
+
 // ─── Main Macro Page ──────────────────────────────────────────────────────────
 export default function Macro() {
   const { refetch: refreshAll } = useMacroSnapshot();
@@ -265,6 +358,9 @@ export default function Macro() {
 
       {/* GIFT Nifty Indicator */}
       <GiftNiftyCard />
+
+      {/* AI Macro Analysis */}
+      <MacroAISection />
 
       {/* 2-column grid for wider screens */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

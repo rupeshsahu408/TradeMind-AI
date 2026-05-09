@@ -33,6 +33,9 @@ app.use((req, res, next) => {
 app.use('/api/health', require('./routes/health'));
 app.use('/api/auth',   require('./routes/auth'));
 
+// ─── AI Intelligence Core Routes (Phase 4) ───────────────────────────────────
+app.use('/api', require('./routes/ai'));
+
 // ─── Data Engine Proxy Routes (Phase 2 + 3) ───────────────────────────────────
 // All requests forwarded to Python data service at PYTHON_SERVICE_URL (default localhost:8000)
 // Auth is enforced inside the proxy router
