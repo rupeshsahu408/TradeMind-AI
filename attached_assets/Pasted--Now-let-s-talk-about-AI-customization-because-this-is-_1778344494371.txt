@@ -1,0 +1,94 @@
+“Now let’s talk about AI customization, because this is a very important part. As you can see from the chat above, when I asked the AI things like ‘I want to do trading on a particular day, tell me the top 10 stocks,’ it was not answering properly. You can see the kind of replies it is giving.
+
+This was already part of our original plan, and in fact this is the core foundation of the entire project — not some small feature. This is what makes our project different from everything else.
+
+So the plan is this:
+
+Suppose I ask the AI something like:
+
+* ‘I want to do intraday trading today’
+* or ‘I want to trade for one day’
+* or in any other natural way.
+
+Then I may ask:
+
+* ‘Tell me the top 10 stocks’
+* ‘Tell me the top 2’
+* ‘Tell me the top 1 stock’
+* ‘Tell me the one stock that is almost certain to rise that day’
+
+Basically, if I say I’m doing intraday trading, then the AI should tell me which stock is most likely to go up that day.
+
+The AI should answer properly:
+
+* It should give the top stock suggestions.
+* It should explain clearly WHY those stocks may rise.
+* It should provide sources for every reason.
+* It should analyze company strength/fundamentals.
+* It should show positive news and negative news.
+* It should explain what the positive and negative news are saying.
+* It should show charts.
+* It should analyze the charts itself.
+* It should estimate how much the stock may rise.
+* It should provide probability/confidence percentages.
+* It should rank them like Top 1, Top 2, etc.
+
+And if I ask about specific stocks, like:
+‘Should I buy Tata stock?’
+‘Will Adani Green rise or fall?’
+
+Then the AI should explain deeply:
+
+* whether it is risky or not,
+* whether it may rise or fall,
+* why it may rise,
+* how it may rise,
+* when it may rise,
+* company fundamentals,
+* positive news,
+* negative news,
+* market sentiment,
+* and many other details that can be implemented.
+
+And if the stock may fall, then it should explain:
+
+* why it may fall,
+* what negative news exists,
+* what positive news exists,
+* company strength,
+* market risks,
+* etc.
+
+Basically, we want to build the AI in such a way that the AI becomes our ‘head’ — like a highly experienced professional trader.
+
+It should feel like it has experience from the very beginning of stock market history — like an ultra-experienced trading expert.
+
+The AI should guide us like:
+‘Put money into this stock.’
+‘This stock has high probability.’
+‘This stock may rise in intraday.’
+‘This stock is better for holding.’
+
+And then my job is simply to go to a broker app like Groww and buy the stock the AI recommended.
+
+The AI should also understand different contexts:
+
+* If I say I’m doing intraday trading, it should answer according to intraday.
+* If I say I’m doing holding/long-term investing, it should answer according to holding.
+
+For example:
+‘This may not rise much intraday, but it has strong holding potential.’
+or
+‘This stock has high confidence for intraday movement.’
+or
+‘This stock may fall even in holding.’
+
+So basically, as I said, the AI should become our main decision-making head. Whatever it says, we follow.
+
+And remember, I’m building this mainly for my own personal use, not as a public trading platform.
+
+So the AI should be built at a completely different level — something truly advanced and unique, with sources, analysis, charts, confidence, web research, and everything deeply integrated.
+
+First, confirm whether you truly understand what I’m trying to say, because I know I explained some things in a slightly messy or mixed-up way.
+
+So first explain my own idea back to me clearly and properly, confirm your understanding, and also tell me if you would suggest adding anything more.”
