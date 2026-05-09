@@ -52,7 +52,101 @@ CONFIDENCE THRESHOLDS:
 - 40–59%: "Speculative — small position only."
 - Below 40%: "Avoid — signals are mixed or weak."
 
+DATA GROUNDING RULE (absolute):
+When [LIVE NSE DATA] is provided in the user message, you MUST use ONLY those numbers for prices, volumes, PE ratios, RSI, and all financial metrics. Your training data has outdated prices that are WRONG. Never quote any price, market cap, or financial figure that is not explicitly provided in [LIVE NSE DATA]. If a number is not in the live data, say "data not available" instead of guessing.
+
 REQUIRED: Every analysis must close with: "For informational purposes only. Not financial advice."`;
+
+// ─── Company name → NSE ticker lookup (top 80 NSE stocks) ────────────────────
+
+const COMPANY_TICKER_MAP = {
+  'reliance': 'RELIANCE', 'reliance industries': 'RELIANCE', 'ril': 'RELIANCE',
+  'tcs': 'TCS', 'tata consultancy': 'TCS', 'tata consultancy services': 'TCS',
+  'infosys': 'INFY', 'infy': 'INFY',
+  'hdfc bank': 'HDFCBANK', 'hdfcbank': 'HDFCBANK', 'hdfc': 'HDFCBANK',
+  'icici bank': 'ICICIBANK', 'icicibank': 'ICICIBANK', 'icici': 'ICICIBANK',
+  'wipro': 'WIPRO',
+  'hcl tech': 'HCLTECH', 'hcl technologies': 'HCLTECH', 'hcltech': 'HCLTECH',
+  'bharti airtel': 'BHARTIARTL', 'airtel': 'BHARTIARTL', 'bhartiartl': 'BHARTIARTL',
+  'sbi': 'SBIN', 'state bank': 'SBIN', 'state bank of india': 'SBIN', 'sbin': 'SBIN',
+  'kotak': 'KOTAKBANK', 'kotak bank': 'KOTAKBANK', 'kotak mahindra': 'KOTAKBANK', 'kotakbank': 'KOTAKBANK',
+  'axis bank': 'AXISBANK', 'axisbank': 'AXISBANK',
+  'ltimindtree': 'LTIM', 'lti mindtree': 'LTIM',
+  'bajaj finance': 'BAJFINANCE', 'bajfinance': 'BAJFINANCE',
+  'bajaj finserv': 'BAJAJFINSV', 'bajajfinsv': 'BAJAJFINSV',
+  'titan': 'TITAN', 'titan company': 'TITAN',
+  'asian paints': 'ASIANPAINT', 'asianpaint': 'ASIANPAINT',
+  'maruti': 'MARUTI', 'maruti suzuki': 'MARUTI',
+  'sun pharma': 'SUNPHARMA', 'sunpharma': 'SUNPHARMA',
+  'dr reddy': 'DRREDDY', "dr reddy's": 'DRREDDY', 'drreddy': 'DRREDDY',
+  'cipla': 'CIPLA',
+  'divis': 'DIVISLAB', "divi's": 'DIVISLAB', 'divislab': 'DIVISLAB',
+  'ultratech': 'ULTRACEMCO', 'ultratech cement': 'ULTRACEMCO', 'ultracemco': 'ULTRACEMCO',
+  'nestle': 'NESTLEIND', 'nestleind': 'NESTLEIND',
+  'hindustan unilever': 'HINDUNILVR', 'hul': 'HINDUNILVR', 'hindunilvr': 'HINDUNILVR',
+  'itc': 'ITC',
+  'power grid': 'POWERGRID', 'powergrid': 'POWERGRID',
+  'ntpc': 'NTPC',
+  'ongc': 'ONGC', 'oil and natural gas': 'ONGC',
+  'coal india': 'COALINDIA', 'coalindia': 'COALINDIA',
+  'tata steel': 'TATASTEEL', 'tatasteel': 'TATASTEEL',
+  'tata motors': 'TATAMOTORS', 'tatamotors': 'TATAMOTORS',
+  'tata power': 'TATAPOWER', 'tatapower': 'TATAPOWER',
+  'jio financial': 'JIOFIN', 'jio': 'JIOFIN',
+  'adani enterprises': 'ADANIENT', 'adani': 'ADANIENT', 'adanient': 'ADANIENT',
+  'adani ports': 'ADANIPORTS', 'adaniports': 'ADANIPORTS',
+  'adani green': 'ADANIGREEN', 'adanigreen': 'ADANIGREEN',
+  'adani power': 'ADANIPOWER', 'adanipower': 'ADANIPOWER',
+  'jsw steel': 'JSWSTEEL', 'jswsteel': 'JSWSTEEL',
+  'hindalco': 'HINDALCO',
+  'shriram finance': 'SHRIRAMFIN', 'shriramfin': 'SHRIRAMFIN',
+  'dmart': 'DMART', 'avenue supermarts': 'DMART',
+  'zomato': 'ZOMATO',
+  'paytm': 'PAYTM', 'one97': 'PAYTM',
+  'nykaa': 'NYKAA', 'fsg': 'NYKAA',
+  'indigo': 'INDIGO', 'interglobe': 'INDIGO',
+  'bpcl': 'BPCL', 'bharat petroleum': 'BPCL',
+  'hpcl': 'HPCL', 'hindustan petroleum': 'HPCL',
+  'ioc': 'IOC', 'indian oil': 'IOC',
+  'grasim': 'GRASIM',
+  'eicher motors': 'EICHERMOT', 'eichermot': 'EICHERMOT', 'royal enfield': 'EICHERMOT',
+  'hero motocorp': 'HEROMOTOCO', 'hero': 'HEROMOTOCO', 'heromotoco': 'HEROMOTOCO',
+  'bajaj auto': 'BAJAJ-AUTO', 'bajaj': 'BAJAJ-AUTO',
+  'britannia': 'BRITANNIA',
+  'pidilite': 'PIDILITIND', 'pidilitind': 'PIDILITIND',
+  'havells': 'HAVELLS',
+  'indus ind': 'INDUSINDBK', 'indusind': 'INDUSINDBK', 'indusindbk': 'INDUSINDBK',
+  'yes bank': 'YESBANK', 'yesbank': 'YESBANK',
+  'pnb': 'PNB', 'punjab national bank': 'PNB',
+  'bank of baroda': 'BANKBARODA', 'bankbaroda': 'BANKBARODA', 'bob': 'BANKBARODA',
+  'tech mahindra': 'TECHM', 'techm': 'TECHM',
+  'mphasis': 'MPHASIS',
+  'l&t': 'LT', 'larsen': 'LT', 'larsen & toubro': 'LT', 'lt': 'LT',
+  'siemens': 'SIEMENS',
+  'abb india': 'ABB',
+};
+
+function detectCompanyTicker(message) {
+  const lower = message.toLowerCase();
+  let bestMatch = null;
+  let bestLen = 0;
+  for (const [name, ticker] of Object.entries(COMPANY_TICKER_MAP)) {
+    if (lower.includes(name) && name.length > bestLen) {
+      bestMatch = ticker;
+      bestLen = name.length;
+    }
+  }
+  if (bestMatch) return bestMatch;
+  const capsMatch = message.match(/\b([A-Z]{3,12})\b/g);
+  if (capsMatch) {
+    for (const cap of capsMatch) {
+      if (!['NSE', 'BSE', 'FII', 'DII', 'RSI', 'MACD', 'IPO', 'RBI', 'SEBI', 'ETF', 'SIP', 'NFO', 'NAV', 'OFS', 'QIB', 'GDP', 'CPI', 'WPI', 'EMI'].includes(cap)) {
+        return cap;
+      }
+    }
+  }
+  return null;
+}
 
 // ─── Python service helper ────────────────────────────────────────────────────
 
@@ -339,7 +433,6 @@ router.post('/chat', async (req, res) => {
   sseSetup(res);
 
   try {
-    // Build messages array
     const messages = [{ role: 'system', content: SYSTEM_PROMPT }];
 
     // Add conversation history (last 12 exchanges)
@@ -349,11 +442,17 @@ router.post('/chat', async (req, res) => {
       }
     }
 
-    // Enrich with live market context if stock-related
-    const isMarketQuery = /\b(stock|price|buy|sell|rsi|macd|technical|chart|nifty|sensex|fii|dii|sector|rupee|crude|analysis|invest|trading)\b/i.test(message);
-    let liveContext = '';
+    // Detect if message is market-related (broad check including company names)
+    const lowerMsg = message.toLowerCase();
+    const isMarketQuery = (
+      /\b(stock|share|price|buy|sell|khareed|becho|rsi|macd|technical|chart|nifty|sensex|fii|dii|sector|rupee|crude|analysis|invest|trading|portfolio|market|kya lagta|kaise|target|entry|exit|support|resistance|earnings|results|quarterly|q[1-4]|profit|revenue|pe ratio|dividend)\b/i.test(message) ||
+      Object.keys(COMPANY_TICKER_MAP).some(name => lowerMsg.includes(name))
+    );
+
+    let liveDataBlock = '';
 
     if (isMarketQuery) {
+      // Always fetch indices + FII/DII for any market query
       const [fiiDii, indices] = await Promise.allSettled([
         pythonGet('/nse/fii-dii'),
         pythonGet('/market/indices'),
@@ -361,39 +460,79 @@ router.post('/chat', async (req, res) => {
       const fii = fiiDii.status === 'fulfilled' ? fiiDii.value : null;
       const idx = indices.status === 'fulfilled' ? indices.value : null;
 
-      if (fii?.fii_net != null) {
-        liveContext += `\nFII net flow today: ${fii.fii_net >= 0 ? '+' : ''}₹${fii.fii_net} Cr (${fii.market_mood}), DII: ${fii.dii_net >= 0 ? '+' : ''}₹${fii.dii_net} Cr.`;
-      }
+      const today = new Date().toLocaleDateString('en-IN', {
+        day: 'numeric', month: 'long', year: 'numeric',
+      });
+      liveDataBlock += `DATE: ${today} (use this as today's date)\n`;
+
       if (idx?.nifty50?.price) {
-        liveContext += ` Nifty 50: ${idx.nifty50.price} (${idx.nifty50.change_pct >= 0 ? '+' : ''}${idx.nifty50.change_pct}%).`;
+        liveDataBlock += `Nifty 50: ${idx.nifty50.price} (${idx.nifty50.change_pct >= 0 ? '+' : ''}${idx.nifty50.change_pct}%)\n`;
+      }
+      if (idx?.sensex?.price) {
+        liveDataBlock += `Sensex: ${idx.sensex.price} (${idx.sensex.change_pct >= 0 ? '+' : ''}${idx.sensex.change_pct}%)\n`;
       }
       if (idx?.banknifty?.price) {
-        liveContext += ` Bank Nifty: ${idx.banknifty.price} (${idx.banknifty.change_pct >= 0 ? '+' : ''}${idx.banknifty.change_pct}%).`;
+        liveDataBlock += `Bank Nifty: ${idx.banknifty.price} (${idx.banknifty.change_pct >= 0 ? '+' : ''}${idx.banknifty.change_pct}%)\n`;
+      }
+      if (fii?.fii_net != null) {
+        liveDataBlock += `FII Net: ${fii.fii_net >= 0 ? '+' : ''}₹${fii.fii_net} Cr | DII Net: ${fii.dii_net >= 0 ? '+' : ''}₹${fii.dii_net} Cr | Market Mood: ${fii.market_mood}\n`;
+      }
+
+      // Detect specific company/ticker mentioned in message
+      const detectedTicker = detectCompanyTicker(message);
+      if (detectedTicker) {
+        // Fetch full stock context: quote + fundamentals + technicals in parallel
+        const [qRes, fRes, tRes] = await Promise.allSettled([
+          pythonGet(`/market/quote?ticker=${detectedTicker}.NS`),
+          pythonGet(`/market/fundamentals?ticker=${detectedTicker}.NS`),
+          pythonGet(`/technical/summary?ticker=${detectedTicker}.NS`),
+        ]);
+        const q    = qRes.status === 'fulfilled' ? qRes.value : null;
+        const fund = fRes.status === 'fulfilled' ? fRes.value : null;
+        const tech = tRes.status === 'fulfilled' ? tRes.value : null;
+
+        if (q?.price) {
+          liveDataBlock += `\n--- ${q.company || detectedTicker} (${detectedTicker}) LIVE DATA from NSE India ---\n`;
+          liveDataBlock += `Current Price: ₹${q.price}\n`;
+          liveDataBlock += `Change Today: ${q.change >= 0 ? '+' : ''}₹${q.change} (${q.change_pct >= 0 ? '+' : ''}${q.change_pct}%)\n`;
+          liveDataBlock += `Day Range: ₹${q.day_low} – ₹${q.day_high}\n`;
+          liveDataBlock += `Open: ₹${q.open || 'N/A'} | Prev Close: ₹${q.prev_close}\n`;
+          liveDataBlock += `52-Week High: ₹${q.week_52_high} | 52-Week Low: ₹${q.week_52_low}\n`;
+          if (q.volume > 0) liveDataBlock += `Volume: ${q.volume.toLocaleString('en-IN')}\n`;
+          if (q.market_cap > 0) liveDataBlock += `Market Cap: ₹${(q.market_cap / 1e7).toFixed(0)} Cr\n`;
+        }
+        if (fund?.pe_ratio != null) {
+          liveDataBlock += `P/E Ratio: ${fund.pe_ratio}\n`;
+          if (fund.price_to_book) liveDataBlock += `P/B: ${fund.price_to_book}\n`;
+          if (fund.roe) liveDataBlock += `ROE: ${fund.roe}%\n`;
+          if (fund.eps) liveDataBlock += `EPS: ₹${fund.eps}\n`;
+          if (fund.sector) liveDataBlock += `Sector: ${fund.sector}\n`;
+          if (fund.dividend_yield) liveDataBlock += `Dividend Yield: ${fund.dividend_yield}%\n`;
+          if (fund.market_cap_cr) liveDataBlock += `Market Cap (Screener): ₹${fund.market_cap_cr} Cr\n`;
+        }
+        if (tech?.rsi?.rsi != null) {
+          liveDataBlock += `RSI(14): ${tech.rsi.rsi} [${tech.rsi.signal}]\n`;
+        }
+        if (tech?.macd?.trend) {
+          liveDataBlock += `MACD: ${tech.macd.trend} | Histogram: ${tech.macd.histogram}\n`;
+        }
+        if (tech?.overall_signal) {
+          liveDataBlock += `Overall Technical Signal: ${tech.overall_signal}\n`;
+        }
       }
     }
 
-    // Check for specific ticker in the message
-    const tickerMatch = message.match(/\b([A-Z]{3,10})\b/);
-    if (tickerMatch && isMarketQuery) {
-      const possibleTicker = tickerMatch[1];
-      const quote = await pythonGet(`/market/quote?ticker=${possibleTicker}.NS`);
-      if (quote?.price > 0) {
-        liveContext += ` ${possibleTicker} live: ₹${quote.price} (${quote.change_pct >= 0 ? '+' : ''}${quote.change_pct}%), 52W range: ₹${quote.week_52_low}–₹${quote.week_52_high}.`;
-      }
-    }
-
-    const finalMessage = liveContext
-      ? `${message}\n\n[Live Market Data:${liveContext}]`
+    // Build final user message with hard grounding instruction
+    const finalMessage = liveDataBlock
+      ? `${message}\n\n[LIVE NSE DATA — fetched right now from NSE India servers. These are the ONLY correct numbers. Do NOT use your training knowledge for any price, ratio, or financial figure. Your training data is outdated and WRONG for current prices.]\n${liveDataBlock}[END LIVE NSE DATA]`
       : message;
 
     messages.push({ role: 'user', content: finalMessage });
 
-    // Signal to client that data fetch is done and streaming begins
     sseSend(res, { type: 'stream_start' });
 
     const fullContent = await streamNvidia(res, messages, 1500, 0.3);
 
-    // Async DB saves — do not block response
     const sid = sessionId || uuidv4();
     Promise.all([
       pool.query(
