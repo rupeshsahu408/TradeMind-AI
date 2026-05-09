@@ -235,3 +235,137 @@ export const macroApi = {
   globalIndices: () => api.get<Record<string, GlobalIndexItem>>('/macro/global-indices'),
   snapshot:      () => api.get<MacroSnapshot>('/macro/snapshot'),
 };
+
+// ─── News ──────────────────────────────────────────────────────────────────────
+
+export interface NewsArticle {
+  title:        string;
+  url:          string;
+  source:       string;
+  published_at: string;
+  summary:      string;
+  sentiment:    'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | null;
+}
+
+export interface NewsSearchResult {
+  query:     string;
+  hours:     number;
+  total:     number;
+  articles:  NewsArticle[];
+  timestamp: string;
+}
+
+export interface NewsFeedResult {
+  source:    string;
+  total:     number;
+  articles:  NewsArticle[];
+  timestamp: string;
+}
+
+export interface IndiaMarketNewsResult {
+  sources:   string[];
+  total:     number;
+  articles:  NewsArticle[];
+  timestamp: string;
+}
+
+export const newsApi = {
+  search: (q: string, hours = 24, tag = true) =>
+    api.get<NewsSearchResult>(`/news/search?q=${encodeURIComponent(q)}&hours=${hours}&tag=${tag}`),
+
+  feed: (source: 'et' | 'mc' | 'mint' | 'bs', tag = false) =>
+    api.get<NewsFeedResult>(`/news/feed?source=${source}&tag=${tag}`),
+
+  indiaMarket: (tag = false, limit = 30) =>
+    api.get<IndiaMarketNewsResult>(`/news/india-market?tag=${tag}&limit=${limit}`),
+
+  google: (q: string, hours = 6, tag = true) =>
+    api.get<NewsSearchResult>(`/news/google?q=${encodeURIComponent(q)}&hours=${hours}&tag=${tag}`),
+};
+
+// ─── Sentiment ────────────────────────────────────────────────────────────────
+
+export interface RedditSentiment {
+  ticker:        string;
+  status:        'ok' | 'unavailable' | 'error';
+  reason?:       string;
+  mention_count: number;
+  positive:      number;
+  negative:      number;
+  neutral:       number;
+  net_sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+  top_posts:     Array<{
+    title:     string;
+    text:      string;
+    score:     number;
+    url:       string;
+    sub:       string;
+    sentiment: string;
+    created:   string;
+  }>;
+  timestamp: string;
+}
+
+export interface TwitterSentiment {
+  query:         string;
+  status:        'ok' | 'unavailable' | 'error';
+  reason?:       string;
+  tweet_count:   number;
+  positive:      number;
+  negative:      number;
+  neutral:       number;
+  net_sentiment: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+  tweets:        Array<{
+    text:      string;
+    timestamp: string;
+    source:    string;
+    sentiment: string;
+  }>;
+  timestamp: string;
+}
+
+export interface YouTubeSentiment {
+  ticker:  string;
+  status:  'ok' | 'unavailable' | 'error';
+  reason?: string;
+  total:   number;
+  videos:  Array<{
+    title:        string;
+    channel:      string;
+    published_at: string;
+    description:  string;
+    url:          string;
+    thumbnail:    string;
+    sentiment:    string | null;
+  }>;
+  timestamp: string;
+}
+
+export interface TrendsSentiment {
+  ticker:     string;
+  days:       number;
+  status:     'ok' | 'no_data' | 'error';
+  direction?: 'rising' | 'falling' | 'stable';
+  peak_score?: number;
+  current?:   number;
+  average?:   number;
+  history?:   Array<{ date: string; value: number }>;
+  timestamp:  string;
+}
+
+export const sentimentApi = {
+  reddit:  (ticker: string) =>
+    api.get<RedditSentiment>(`/sentiment/reddit?ticker=${encodeURIComponent(ticker)}`),
+
+  twitter: (query: string) =>
+    api.get<TwitterSentiment>(`/sentiment/twitter?query=${encodeURIComponent(query)}`),
+
+  youtube: (ticker: string, limit = 5) =>
+    api.get<YouTubeSentiment>(`/sentiment/youtube?ticker=${encodeURIComponent(ticker)}&limit=${limit}`),
+
+  trends:  (ticker: string, days = 7) =>
+    api.get<TrendsSentiment>(`/sentiment/trends?ticker=${encodeURIComponent(ticker)}&days=${days}`),
+
+  aiTag:   (text: string, context = '') =>
+    api.post<{ sentiment: string; model: string }>('/sentiment/ai-tag', { text, context }),
+};

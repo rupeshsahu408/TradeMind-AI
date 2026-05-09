@@ -13,11 +13,13 @@ from routes.nse       import router as nse_router
 from routes.technical import router as technical_router
 from routes.screener  import router as screener_router
 from routes.macro     import router as macro_router
+from routes.news      import router as news_router
+from routes.sentiment import router as sentiment_router
 
 app = FastAPI(
     title="Billionaire AI — Data Service",
-    description="Python microservice for NSE/BSE market data, technical indicators, and macro data.",
-    version="2.0.0",
+    description="Python microservice for NSE/BSE market data, technical indicators, news, and sentiment.",
+    version="3.0.0",
 )
 
 ALLOWED_ORIGINS = [
@@ -46,6 +48,8 @@ app.include_router(nse_router)
 app.include_router(technical_router)
 app.include_router(screener_router)
 app.include_router(macro_router)
+app.include_router(news_router)
+app.include_router(sentiment_router)
 
 
 # ─── Health ───────────────────────────────────────────────────────────────────
@@ -65,7 +69,7 @@ async def health_check():
         "version":     "2.0.0",
         "timestamp":   datetime.utcnow().isoformat() + "Z",
         "python_env":  "ready",
-        "phase":       "2 — Data Engine",
+        "phase":       "3 — News & Sentiment Engine",
         "libraries": {
             "yfinance":      _ver("yfinance"),
             "httpx":         _ver("httpx"),
@@ -73,6 +77,7 @@ async def health_check():
             "feedparser":    _ver("feedparser"),
             "pytrends":      _ver("pytrends"),
             "pandas":        _ver("pandas"),
+            "praw":          _ver("praw"),
         },
         "endpoints": {
             "market":    ["/market/quote", "/market/indices", "/market/history",
@@ -83,6 +88,9 @@ async def health_check():
             "screener":  ["/screener/fundamentals"],
             "macro":     ["/macro/commodities", "/macro/forex", "/macro/sgx-nifty",
                           "/macro/global-indices", "/macro/snapshot"],
+            "news":      ["/news/search", "/news/feed", "/news/india-market", "/news/google"],
+            "sentiment": ["/sentiment/reddit", "/sentiment/twitter", "/sentiment/youtube",
+                          "/sentiment/trends", "/sentiment/ai-tag"],
         },
     }
 
@@ -91,7 +99,7 @@ async def health_check():
 @app.get("/")
 async def root():
     return {
-        "message": "Billionaire AI Data Service — Phase 2",
+        "message": "Billionaire AI Data Service — Phase 3",
         "docs":    "/docs",
         "health":  "/health",
     }

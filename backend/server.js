@@ -33,8 +33,8 @@ app.use((req, res, next) => {
 app.use('/api/health', require('./routes/health'));
 app.use('/api/auth',   require('./routes/auth'));
 
-// ─── Data Engine Proxy Routes (Phase 2) ───────────────────────────────────────
-// All requests forwarded to Python data service at localhost:8000
+// ─── Data Engine Proxy Routes (Phase 2 + 3) ───────────────────────────────────
+// All requests forwarded to Python data service at PYTHON_SERVICE_URL (default localhost:8000)
 // Auth is enforced inside the proxy router
 const proxy = require('./routes/proxy');
 app.use('/api/market',    proxy);
@@ -42,6 +42,8 @@ app.use('/api/nse',       proxy);
 app.use('/api/technical', proxy);
 app.use('/api/screener',  proxy);
 app.use('/api/macro',     proxy);
+app.use('/api/news',      proxy);
+app.use('/api/sentiment', proxy);
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
 app.use((req, res) => {
@@ -61,7 +63,7 @@ async function start() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[Server] Running on http://0.0.0.0:${PORT}`);
     console.log(`[Server] Health:  http://localhost:${PORT}/api/health`);
-    console.log(`[Server] Proxy:   /api/market → /api/nse → /api/technical → /api/screener → /api/macro`);
+    console.log(`[Server] Proxy:   /api/market /api/nse /api/technical /api/screener /api/macro /api/news /api/sentiment`);
   });
 }
 
