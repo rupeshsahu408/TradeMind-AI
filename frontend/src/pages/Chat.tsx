@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import {
   Send, Square, MessageSquare, Plus, TrendingUp,
   TrendingDown, Minus, AlertCircle, ChevronDown,
-  History, X, Languages, Clock,
+  History, X, Languages, Clock, ExternalLink,
+  Newspaper, BarChart2, BookOpen, LineChart,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { aiApi, SignalStack } from '../lib/api';
@@ -13,6 +14,28 @@ const uuidv4 = (): string => crypto.randomUUID();
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface SourceArticle {
+  title:        string;
+  url:          string;
+  source:       string;
+  published_at: string;
+  sentiment:    'POSITIVE' | 'NEGATIVE' | 'NEUTRAL' | null;
+}
+
+interface SourceLink {
+  label: string;
+  url:   string;
+  icon:  string;
+}
+
+interface SourcesData {
+  ticker:   string;
+  company:  string;
+  price:    number | null;
+  articles: SourceArticle[];
+  links:    SourceLink[];
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -20,6 +43,7 @@ interface Message {
   streaming?: boolean;
   error?: boolean;
   signalStack?: SignalStack;
+  sources?: SourcesData;
   timestamp: Date;
 }
 
@@ -143,6 +167,119 @@ function SignalStackDisplay({ stack }: { stack: SignalStack }) {
   );
 }
 
+// ─── Sources Panel ────────────────────────────────────────────────────────────
+
+const LINK_ICONS: Record<string, React.ReactNode> = {
+  nse:      <BookOpen className="w-3 h-3" />,
+  screener: <BarChart2 className="w-3 h-3" />,
+  chart:    <LineChart className="w-3 h-3" />,
+  mc:       <Newspaper className="w-3 h-3" />,
+};
+
+const SENTIMENT_STYLES: Record<string, string> = {
+  POSITIVE: 'bg-bull/10 text-bull border-bull/20',
+  NEGATIVE: 'bg-bear/10 text-bear border-bear/20',
+  NEUTRAL:  'bg-muted text-muted-foreground border-border',
+};
+
+function SourcesPanel({ data }: { data: SourcesData }) {
+  const [expanded, setExpanded] = useState(false);
+  const totalCount = data.articles.length + data.links.length;
+
+  function timeAgo(iso: string): string {
+    const ms = Date.now() - new Date(iso).getTime();
+    const h = Math.floor(ms / 3600000);
+    if (h < 1) return 'just now';
+    if (h < 24) return `${h}h ago`;
+    return `${Math.floor(h / 24)}d ago`;
+  }
+
+  return (
+    <div className="mt-2 border border-border/60 rounded-lg overflow-hidden text-[11px]">
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 bg-secondary/30 hover:bg-secondary/60 transition-colors"
+      >
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <ExternalLink className="w-3 h-3 text-primary/70" />
+          <span className="font-medium text-foreground">Sources</span>
+          <span className="text-muted-foreground">·</span>
+          <span>{data.ticker}</span>
+          {data.price && (
+            <>
+              <span className="text-muted-foreground">·</span>
+              <span className="text-foreground font-medium">₹{data.price}</span>
+            </>
+          )}
+          <span className="text-muted-foreground">·</span>
+          <span>{totalCount} sources</span>
+        </div>
+        <ChevronDown className={cn('w-3 h-3 text-muted-foreground transition-transform', expanded && 'rotate-180')} />
+      </button>
+
+      {expanded && (
+        <div className="border-t border-border/60">
+          {/* External data links */}
+          <div className="flex flex-wrap gap-1.5 px-3 py-2 border-b border-border/40">
+            {data.links.map(link => (
+              <a
+                key={link.label}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary/60 hover:bg-secondary border border-border/60 hover:border-primary/30 text-muted-foreground hover:text-foreground transition-all"
+              >
+                {LINK_ICONS[link.icon] || <ExternalLink className="w-3 h-3" />}
+                <span>{link.label}</span>
+                <ExternalLink className="w-2.5 h-2.5 opacity-40" />
+              </a>
+            ))}
+          </div>
+
+          {/* News articles */}
+          {data.articles.length > 0 && (
+            <div className="divide-y divide-border/30">
+              {data.articles.map((a, i) => (
+                <a
+                  key={i}
+                  href={a.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-start gap-2.5 px-3 py-2 hover:bg-accent/40 transition-colors group"
+                >
+                  <Newspaper className="w-3 h-3 text-muted-foreground/50 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-foreground group-hover:text-primary transition-colors leading-snug line-clamp-2">
+                      {a.title}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-muted-foreground">{a.source}</span>
+                      <span className="text-muted-foreground/50">·</span>
+                      <span className="text-muted-foreground">{timeAgo(a.published_at)}</span>
+                      {a.sentiment && (
+                        <>
+                          <span className="text-muted-foreground/50">·</span>
+                          <span className={cn(
+                            'px-1.5 py-px rounded border text-[10px] font-medium',
+                            SENTIMENT_STYLES[a.sentiment] || SENTIMENT_STYLES.NEUTRAL,
+                          )}>
+                            {a.sentiment}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <ExternalLink className="w-3 h-3 text-muted-foreground/30 group-hover:text-primary/50 flex-shrink-0 mt-0.5 transition-colors" />
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Working status animation ─────────────────────────────────────────────────
 
 function WorkingStatus({ messages, visible }: { messages: string[]; visible: boolean }) {
@@ -216,6 +353,9 @@ function MessageBubble({ msg }: { msg: Message }) {
         </div>
         {msg.signalStack && !msg.streaming && (
           <SignalStackDisplay stack={msg.signalStack} />
+        )}
+        {msg.sources && !msg.streaming && (
+          <SourcesPanel data={msg.sources} />
         )}
         <p className="text-[10px] text-muted-foreground mt-1 ml-1">
           {msg.timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
@@ -427,6 +567,7 @@ export default function Chat() {
 
     let streamStarted = false;
     let pendingStack: SignalStack | undefined;
+    let pendingSources: SourcesData | undefined;
 
     aiApi.chat(text, history, sessionId.current, {
       signal: abort.signal,
@@ -434,6 +575,7 @@ export default function Chat() {
       onMeta: (key, value) => {
         if (key === 'stream_start') { streamStarted = true; setShowStatus(false); }
         if (key === 'signal_stack') { pendingStack = value as SignalStack; }
+        if (key === 'sources')      { pendingSources = value as SourcesData; }
       },
 
       onToken: (token) => {
@@ -446,10 +588,11 @@ export default function Chat() {
         setShowStatus(false);
         abortRef.current = null;
         setMessages(prev => prev.map(m =>
-          m.id === aId ? { ...m, streaming: false, signalStack: pendingStack } : m,
+          m.id === aId
+            ? { ...m, streaming: false, signalStack: pendingStack, sources: pendingSources }
+            : m,
         ));
         inputRef.current?.focus();
-        // Refresh history list so new session appears
         setAllHistory([]);
       },
 

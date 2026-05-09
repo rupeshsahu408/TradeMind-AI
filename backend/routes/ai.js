@@ -450,6 +450,7 @@ router.post('/chat', async (req, res) => {
     );
 
     let liveDataBlock = '';
+    let sourcesPayload = null;
 
     if (isMarketQuery) {
       // Always fetch indices + FII/DII for any market query
@@ -480,16 +481,19 @@ router.post('/chat', async (req, res) => {
 
       // Detect specific company/ticker mentioned in message
       const detectedTicker = detectCompanyTicker(message);
+
       if (detectedTicker) {
-        // Fetch full stock context: quote + fundamentals + technicals in parallel
-        const [qRes, fRes, tRes] = await Promise.allSettled([
+        // Fetch full stock context + news in parallel
+        const [qRes, fRes, tRes, nRes] = await Promise.allSettled([
           pythonGet(`/market/quote?ticker=${detectedTicker}.NS`),
           pythonGet(`/market/fundamentals?ticker=${detectedTicker}.NS`),
           pythonGet(`/technical/summary?ticker=${detectedTicker}.NS`),
+          pythonGet(`/news/search?q=${encodeURIComponent(detectedTicker + ' India stock')}&hours=48&tag=true&limit=6`),
         ]);
         const q    = qRes.status === 'fulfilled' ? qRes.value : null;
         const fund = fRes.status === 'fulfilled' ? fRes.value : null;
         const tech = tRes.status === 'fulfilled' ? tRes.value : null;
+        const newsData = nRes.status === 'fulfilled' ? nRes.value : null;
 
         if (q?.price) {
           liveDataBlock += `\n--- ${q.company || detectedTicker} (${detectedTicker}) LIVE DATA from NSE India ---\n`;
@@ -519,6 +523,48 @@ router.post('/chat', async (req, res) => {
         if (tech?.overall_signal) {
           liveDataBlock += `Overall Technical Signal: ${tech.overall_signal}\n`;
         }
+
+        // Build sources payload to send to client
+        const companyName = q?.company || fund?.company || detectedTicker;
+        const articles = (newsData?.articles || [])
+          .filter(a => a.url && a.title && !a.title.includes('[Removed]'))
+          .slice(0, 5)
+          .map(a => ({
+            title:        a.title,
+            url:          a.url,
+            source:       a.source,
+            published_at: a.published_at,
+            sentiment:    a.sentiment || null,
+          }));
+
+        sourcesPayload = {
+          ticker:  detectedTicker,
+          company: companyName,
+          price:   q?.price || null,
+          articles,
+          links: [
+            {
+              label: 'NSE India',
+              url:   `https://www.nseindia.com/get-quotes/equity?symbol=${detectedTicker}`,
+              icon:  'nse',
+            },
+            {
+              label: 'Screener.in',
+              url:   `https://www.screener.in/company/${detectedTicker}/`,
+              icon:  'screener',
+            },
+            {
+              label: 'TradingView',
+              url:   `https://www.tradingview.com/chart/?symbol=NSE%3A${detectedTicker}`,
+              icon:  'chart',
+            },
+            {
+              label: 'Moneycontrol',
+              url:   `https://www.moneycontrol.com/india/stockpricequote/${detectedTicker.toLowerCase()}`,
+              icon:  'mc',
+            },
+          ],
+        };
       }
     }
 
@@ -529,6 +575,10 @@ router.post('/chat', async (req, res) => {
 
     messages.push({ role: 'user', content: finalMessage });
 
+    // Emit sources before streaming so the client has them ready
+    if (sourcesPayload) {
+      sseSend(res, { type: 'sources', data: sourcesPayload });
+    }
     sseSend(res, { type: 'stream_start' });
 
     const fullContent = await streamNvidia(res, messages, 1500, 0.3);
