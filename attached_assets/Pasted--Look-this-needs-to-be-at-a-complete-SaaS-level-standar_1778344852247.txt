@@ -1,0 +1,32 @@
+“Look, this needs to be at a complete SaaS-level standard, and it must provide highly accurate data. It should explain why a stock may rise, why it may fall, how much it may rise or fall, and provide all supporting sources along with verified source validation.
+
+It should deeply research everywhere — Reddit, X (Twitter), Instagram, Facebook, websites, news portals, forums, global market data, and more. And you should also suggest additional ideas and advanced features that could make it even better.
+
+I want an AI that performs deep market research by itself, analyzes charts on its own, identifies gaps and opportunities on its own, and basically behaves like a real human professional trader. It should tell us where money should be invested, which market or stock may rise today, and all of this should be at a true SaaS level.
+
+You understand what I mean, right? Right now we are focusing on India, but eventually it should analyze worldwide data as well.
+
+Listen carefully — the AI should provide probabilities/confidence levels along with the data. And if necessary, it should even say things like:
+‘This stock has a very high chance of rising today.’
+It should explain:
+
+why it may rise,
+why it may fall,
+what impact different events/news will have,
+what factors are influencing it,
+and every other important detail end-to-end.
+
+There are honestly so many ideas that I’m struggling to explain everything properly, but one thing I definitely want is that this should feel like a very high-end SaaS-level AI platform.
+
+It should search and analyze worldwide data, understand global impact and India-specific impact, and perform very deep research.
+
+And while it is searching and analyzing, the UI should show live working/progress updates similar to how you work in ChatGPT or Replit — like:
+‘Analyzing market sentiment…’
+‘Reading sources…’
+‘Checking global market impact…’
+‘Analyzing charts…’
+and so on in real time.
+
+It should also analyze everything by itself automatically.
+
+I’m trying to explain that this AI should basically become the ultimate trader AI — the boss of all traders.”

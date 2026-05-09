@@ -27,35 +27,45 @@ const PYTHON_URL      = process.env.PYTHON_SERVICE_URL || 'http://localhost:8000
 
 // ─── AI Personality System Prompt ────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are Billionaire AI — a senior proprietary trader with 20+ years of experience in Indian equity markets (NSE/BSE). You think and speak like someone who has seen every market cycle and is never impressed by noise — only by signal.
+const SYSTEM_PROMPT = `You are Billionaire AI — the head of trading desk at a top proprietary trading firm, with 25+ years in Indian equity markets (NSE/BSE). You have lived through every market cycle: 2008 crash, 2013 taper tantrum, COVID collapse, 2023 bull run. You are the user's personal trading edge — the most experienced trader they will ever have access to.
 
-VOICE RULES (non-negotiable):
-- Never open with filler phrases: no "Great question!", "I'd be happy to help", "Certainly!", "Of course!"
-- No hype language: never say "skyrocket", "moon", "amazing opportunity", "definitely going up"
-- No uncertain waffle: never say "maybe", "possibly could", "I think perhaps" — state data, then verdict
+CORE IDENTITY:
+Your job is to tell the user EXACTLY what to do: which stock to buy, why, what price, what target, what stop loss, what confidence level. The user opens Groww/Zerodha right after reading your response and places the trade. Every word you say carries weight.
+
+VOICE (absolute, never break these):
+- No filler: never open with "Great question!", "I'd be happy to help", "Certainly!", "Of course!", "Sure!"
+- No hype: never say "skyrocket", "moon", "guaranteed", "sure thing", "amazing opportunity"
+- No hedging: never say "I think maybe", "possibly could", "it seems like" — state data, state verdict
 - Never start a response with the word "I"
-- Robotic disclaimers go at the very end only, if needed — never interrupt analysis mid-response
-- Use "definitely" only at 90%+ conviction
-- If the user writes in Hindi/Hinglish: respond in natural Hinglish throughout the entire response — never switch back mid-response
+- Do NOT pepper responses with "not financial advice" disclaimers — one brief line at the very end of major calls only
+- Hindi/Hinglish: if user writes in Hindi or Hinglish, respond entirely in natural Hinglish — never switch mid-response
 
-PERSONALITY:
-Calm. Precise. Neutral. Show your work through data. Speak like someone who has seen every market cycle and is not impressed by noise.
+HOW TO WRITE (show your work through data):
+WRONG: "Based on my analysis, I believe this stock may potentially go up if conditions are right."
+RIGHT: "RSI at 54 — healthy room to run. MACD turned bullish yesterday. FII bought ₹2,400 Cr in banking this week. Volume spiked 40% above average. Three signals agree — this is a clean intraday setup."
 
-HOW TO REFERENCE DATA (weave it naturally):
-WRONG: "Based on my analysis of various sources, I believe this stock may go up."
-RIGHT: "FII data from NSE shows ₹2,400 Cr net buying in banking today. RSI for HDFC Bank sits at 58 — room to move. Q3 earnings beat by 6%. Three signals agree. This is a reasonable setup."
+CONFIDENCE SYSTEM (use these exact thresholds):
+- 90–100%: "Write this down." — rare, only when 4-5 signals fully align
+- 75–89%: "Strong setup — multiple signals agree."
+- 60–74%: "Reasonable risk-reward — size appropriately."
+- 40–59%: "Speculative — small position only, defined stop."
+- Below 40%: "Avoid — signals are mixed or too weak."
 
-CONFIDENCE THRESHOLDS:
-- 90–100%: "Write this down. High conviction call."
-- 75–89%: "Strong signal — multiple indicators agree."
-- 60–74%: "Likely positive — proceed with caution."
-- 40–59%: "Speculative — small position only."
-- Below 40%: "Avoid — signals are mixed or weak."
+INTRADAY PICKS (when asked for intraday/today's stock):
+- Best setup: RSI 40–65 + MACD bullish crossover + volume above average + positive news catalyst
+- Already in today's top gainers = momentum confirmation
+- Overbought (RSI > 75): avoid for intraday — likely to pull back
+- Oversold (RSI < 30): only if clear reversal signal exists
+- ALWAYS give: Entry Zone (₹), Target (₹ + %), Stop Loss (₹ + %), Conviction %
 
-DATA GROUNDING RULE (absolute):
-When [LIVE NSE DATA] is provided in the user message, you MUST use ONLY those numbers for prices, volumes, PE ratios, RSI, and all financial metrics. Your training data has outdated prices that are WRONG. Never quote any price, market cap, or financial figure that is not explicitly provided in [LIVE NSE DATA]. If a number is not in the live data, say "data not available" instead of guessing.
+SPECIFIC STOCK ANALYSIS (when user asks about one stock):
+- State bull case AND bear case clearly
+- Give clear verdict: BUY / SELL / AVOID / HOLD with reason
+- Cite which signals are bullish, which are bearish
+- Give entry zone, target, stop loss regardless of timeframe
 
-REQUIRED: Every analysis must close with: "For informational purposes only. Not financial advice."`;
+DATA GROUNDING (absolute rule):
+When [LIVE NSE DATA] or [LIVE STOCK DATA] is provided, use ONLY those numbers. Never quote training data prices — they are months old and completely wrong. If a metric is not in the live data, say "data not available" — never invent numbers.`;
 
 // ─── Company name → NSE ticker lookup (top 80 NSE stocks) ────────────────────
 
@@ -146,6 +156,256 @@ function detectCompanyTicker(message) {
     }
   }
   return null;
+}
+
+// ─── Intent detection ─────────────────────────────────────────────────────────
+
+function detectIntent(message) {
+  const lower = message.toLowerCase();
+
+  // Timeframe detection
+  let timeframe = 'intraday'; // default for trading questions
+  if (/\b(swing|few days|2-5 day|short.?term|2-3 days|3-5 days|next week|is hafta|agle kuch din)\b/i.test(message)) {
+    timeframe = 'swing';
+  } else if (/\b(long.?term|hold(?:ing)?|invest(?:ment|ing)?|month|year|saal|mahine|zyada time)\b/i.test(message)) {
+    timeframe = 'long_term';
+  }
+
+  // Number of picks detection
+  let n = 1;
+  const wordNums = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10 };
+  const digitMatch = message.match(/\btop[\s-]?(\d+)\b|\b(\d+)\s+stocks?\b|\b(\d+)\s+shares?\b/i);
+  if (digitMatch) n = parseInt(digitMatch[1] || digitMatch[2] || digitMatch[3]);
+  for (const [word, num] of Object.entries(wordNums)) {
+    if (lower.includes(`top ${word}`) || lower.includes(`top-${word}`)) { n = num; break; }
+  }
+  if (n === 1 && /\btop\b/i.test(lower) && !/\btop\s*1\b/i.test(lower)) n = 5; // "top stocks" without number = 5
+
+  // Specific stock detection
+  const ticker = detectCompanyTicker(message);
+
+  // Top picks keywords (not stock-specific)
+  const topPicksKw = [
+    'top', 'best', 'konsa', 'konse', 'kaunsa', 'kaunse', 'which stock', 'what stock',
+    'suggest', 'recommend', 'pick', 'kharidna chahiye', 'buy karna', 'trade karna',
+    'should i buy', 'kya kharidun', 'kya lu', 'kya lena chahiye', 'intraday pick',
+    'stock batao', 'batao konsa', 'rise today', 'rise tomorrow', 'go up today',
+    'will rise', 'gain today', 'sabse accha', 'sahi stock', 'aaj ka stock',
+    'kal ka stock', 'kal ke liye', 'for tomorrow', 'for today',
+  ];
+  const isTopPicksRequest = topPicksKw.some(kw => lower.includes(kw));
+
+  if (isTopPicksRequest && !ticker) {
+    return { type: 'top_picks', n, timeframe };
+  }
+  if (ticker) {
+    return { type: 'specific_stock', ticker, timeframe };
+  }
+
+  const isMarketQuery = /\b(market|nifty|sensex|fii|dii|sector|index|indices|rally|crash|correction|mood|global|crude|rupee|usd|inr)\b/i.test(message);
+  if (isMarketQuery) return { type: 'general_market', timeframe };
+
+  return { type: 'general', timeframe };
+}
+
+// ─── Top picks context builder ────────────────────────────────────────────────
+
+async function buildTopPicksContext(n, timeframe, res) {
+  const emit = (step) => sseSend(res, { type: 'progress', data: step });
+
+  emit('Scanning NSE market movers...');
+
+  const [rIdx, rFii, rMovers, rMacro] = await Promise.allSettled([
+    pythonGet('/market/indices'),
+    pythonGet('/nse/fii-dii'),
+    pythonGet('/nse/top-movers'),
+    pythonGet('/macro/snapshot'),
+  ]);
+
+  const get = r => r.status === 'fulfilled' ? r.value : null;
+  const idxData   = get(rIdx);
+  const fiiData   = get(rFii);
+  const moversData = get(rMovers);
+  const macroData = get(rMacro);
+
+  emit('Identifying top candidates from NSE data...');
+
+  // Build candidate list: gainers first (momentum), then curated Nifty 50
+  const seen = new Set();
+  const candidates = [];
+
+  for (const g of (moversData?.gainers || []).slice(0, 10)) {
+    const sym = (g.ticker || '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+    if (sym && !seen.has(sym)) { seen.add(sym); candidates.push(sym); }
+  }
+
+  const CURATED = [
+    'RELIANCE', 'HDFCBANK', 'ICICIBANK', 'INFY', 'TCS', 'SBIN', 'BHARTIARTL',
+    'LT', 'BAJFINANCE', 'AXISBANK', 'KOTAKBANK', 'WIPRO', 'SUNPHARMA',
+    'TATAMOTORS', 'HINDUNILVR', 'ITC', 'MARUTI', 'NTPC', 'ADANIPORTS',
+    'TITAN', 'BAJAJFINSV', 'POWERGRID', 'JSWSTEEL', 'HCLTECH', 'NESTLEIND',
+    'ASIANPAINT', 'ULTRACEMCO', 'DRREDDY', 'CIPLA', 'BPCL',
+  ];
+  for (const t of CURATED) {
+    if (!seen.has(t)) { seen.add(t); candidates.push(t); }
+    if (candidates.length >= 22) break;
+  }
+
+  emit(`Fetching live prices for ${candidates.length} candidates...`);
+
+  // Quote data for all candidates (Yahoo Finance — no rate limit)
+  const quotePromises = candidates.slice(0, 20).map(ticker =>
+    pythonGet(`/market/quote?ticker=${ticker}.NS`).then(q => ({ ticker, quote: q })).catch(() => ({ ticker, quote: null }))
+  );
+
+  // Technical data only for top 8 candidates (Alpha Vantage rate-limited)
+  const techCandidates = candidates.slice(0, 8);
+  const techPromises = techCandidates.map(ticker =>
+    pythonGet(`/technical/summary?ticker=${ticker}.NS`).then(t => ({ ticker, technical: t })).catch(() => ({ ticker, technical: null }))
+  );
+
+  emit('Analyzing technical indicators (RSI, MACD, volume)...');
+
+  const [quoteResults, techResults, newsResult] = await Promise.all([
+    Promise.all(quotePromises),
+    Promise.all(techPromises),
+    pythonGet('/news/india-market?tag=true&limit=10'),
+  ]);
+
+  emit('Reading FII/DII institutional money flows...');
+  await new Promise(r => setTimeout(r, 250)); // let user see this step
+
+  // Merge quote + technical
+  const techMap = {};
+  for (const t of techResults) techMap[t.ticker] = t.technical;
+
+  const stocks = quoteResults
+    .filter(s => s.quote?.price > 0)
+    .map(s => ({ ticker: s.ticker, quote: s.quote, technical: techMap[s.ticker] || null }));
+
+  emit(`Building ${n > 1 ? `top ${n} picks` : 'top pick'} recommendation engine...`);
+  await new Promise(r => setTimeout(r, 200));
+
+  return { indices: idxData, fii: fiiData, movers: moversData, macro: macroData, stocks, news: newsResult };
+}
+
+// ─── Top picks prompt builder ─────────────────────────────────────────────────
+
+function buildTopPicksPrompt(originalMessage, intent, ctx) {
+  const { n, timeframe } = intent;
+  const { indices, fii, movers, macro, stocks, news } = ctx;
+
+  const today = new Date().toLocaleDateString('en-IN', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+
+  const tfLabel = timeframe === 'swing'     ? 'SWING TRADE (2–5 trading days)'
+    : timeframe === 'long_term' ? 'LONG-TERM INVESTMENT (weeks to months)'
+    : 'INTRADAY (buy and sell same day)';
+
+  let p = `USER REQUEST: "${originalMessage}"\n`;
+  p += `DATE: ${today}\n`;
+  p += `TASK: Identify and rank the top ${n} stock pick${n > 1 ? 's' : ''} for ${tfLabel}. Use ONLY the live data below.\n\n`;
+
+  // Market backdrop
+  p += `## LIVE MARKET SNAPSHOT\n`;
+  if (indices?.nifty50?.price)   p += `Nifty 50: ${indices.nifty50.price} (${indices.nifty50.change_pct >= 0 ? '+' : ''}${indices.nifty50.change_pct}%)\n`;
+  if (indices?.sensex?.price)    p += `Sensex: ${indices.sensex.price} (${indices.sensex.change_pct >= 0 ? '+' : ''}${indices.sensex.change_pct}%)\n`;
+  if (indices?.banknifty?.price) p += `Bank Nifty: ${indices.banknifty.price} (${indices.banknifty.change_pct >= 0 ? '+' : ''}${indices.banknifty.change_pct}%)\n`;
+  if (fii?.fii_net != null)      p += `FII: ${fii.fii_net >= 0 ? '+' : ''}₹${fii.fii_net} Cr | DII: ${fii.dii_net >= 0 ? '+' : ''}₹${fii.dii_net} Cr | Market Mood: ${fii.market_mood}\n`;
+
+  const fx = macro?.forex; const cm = macro?.commodities; const gi = macro?.global_indices;
+  if (fx?.usd_inr?.rate)        p += `USD/INR: ${fx.usd_inr.rate}\n`;
+  if (cm?.crude_oil_wti?.price) p += `Crude WTI: $${cm.crude_oil_wti.price}/bbl\n`;
+  if (gi?.sp500?.price)         p += `S&P 500: ${gi.sp500.price} (${gi.sp500.change_pct >= 0 ? '+' : ''}${gi.sp500.change_pct}%)\n`;
+  if (gi?.vix?.price)           p += `VIX: ${gi.vix.price}\n`;
+
+  // Today's movers (momentum signal)
+  const gainers = movers?.gainers || [];
+  const losers  = movers?.losers  || [];
+  if (gainers.length) {
+    p += `\n## TODAY'S TOP GAINERS (Momentum — these stocks already have buyer interest)\n`;
+    for (const g of gainers.slice(0, 10)) {
+      const pct = g.change_pct != null ? ` (+${Number(g.change_pct).toFixed(2)}%)` : '';
+      p += `${g.ticker}: ₹${g.price}${pct}\n`;
+    }
+  }
+  if (losers.length) {
+    p += `\n## TODAY'S LOSERS (Weakness / Potential Reversal Candidates)\n`;
+    for (const l of losers.slice(0, 5)) {
+      const pct = l.change_pct != null ? ` (${Number(l.change_pct).toFixed(2)}%)` : '';
+      p += `${l.ticker}: ₹${l.price}${pct}\n`;
+    }
+  }
+
+  // Per-stock live data table
+  p += `\n## LIVE STOCK DATA (${stocks.length} candidates)\n`;
+  for (const s of stocks) {
+    const q = s.quote;
+    const t = s.technical;
+    if (!q?.price) continue;
+    let line = `${s.ticker}: ₹${q.price} (${q.change_pct >= 0 ? '+' : ''}${q.change_pct}%)`;
+    if (q.volume > 0)            line += ` | Vol: ${(q.volume / 1000).toFixed(0)}K`;
+    if (t?.rsi?.rsi != null)     line += ` | RSI: ${t.rsi.rsi} [${t.rsi.signal}]`;
+    if (t?.macd?.trend)          line += ` | MACD: ${t.macd.trend}`;
+    if (t?.overall_signal)       line += ` | Signal: ${t.overall_signal}`;
+    if (q.day_low && q.day_high) line += ` | Day: ₹${q.day_low}–₹${q.day_high}`;
+    if (q.week_52_low && q.week_52_high) line += ` | 52W: ₹${q.week_52_low}–₹${q.week_52_high}`;
+    p += line + '\n';
+  }
+
+  // News context
+  const articles = (news?.articles || []).slice(0, 8);
+  if (articles.length) {
+    p += `\n## RECENT MARKET NEWS\n`;
+    for (const a of articles) p += `[${a.sentiment || 'NEUTRAL'}] ${a.title}\n`;
+  }
+
+  // Output format instructions based on timeframe
+  p += `\n## YOUR OUTPUT\n`;
+  p += `Write a brief 2-sentence Market Context first (current bias: bullish/bearish/neutral).\n\n`;
+  p += `Then give exactly ${n} pick${n > 1 ? 's' : ''}, ranked by conviction (Rank #1 = highest). For each:\n\n`;
+
+  if (timeframe === 'intraday' || timeframe === 'general') {
+    p += `---
+**Rank #[N]: [TICKER] — [COMPANY NAME]**
+🎯 Conviction: [XX]% | Setup: [INTRADAY BUY / INTRADAY AVOID]
+**Entry Zone:** ₹[X]–₹[Y]
+**Target:** ₹[Z] (+[A]%)
+**Stop Loss:** ₹[W] (-[B]%)
+**Why it moves today:** [3–4 sentences. Cite RSI value, MACD state, volume vs average, news catalyst, sector momentum. Use the actual numbers from LIVE STOCK DATA above.]
+**Risk:** [One specific risk that would invalidate this trade]
+---\n`;
+    p += `\nSelection rules you MUST follow:\n`;
+    p += `- RSI 40–65 + MACD bullish crossover + high volume = strongest setup\n`;
+    p += `- Stock already in TODAY'S TOP GAINERS list = momentum confirmed\n`;
+    p += `- RSI > 75: avoid (overbought intraday)\n`;
+    p += `- RSI < 30: avoid unless clear reversal signal\n`;
+    p += `- If market mood is BEARISH: warn the user and prefer defensive/low-beta plays\n`;
+  } else if (timeframe === 'swing') {
+    p += `---
+**Rank #[N]: [TICKER] — [COMPANY NAME]**
+🎯 Conviction: [XX]% | Timeframe: 3–7 trading days
+**Entry Zone:** ₹[X]–₹[Y]
+**Target:** ₹[Z] (+[A]%)
+**Stop Loss:** ₹[W] (-[B]%)
+**Bull case:** [Technical breakout or fundamental catalyst. 2–3 sentences.]
+**Bear case:** [What would invalidate this swing trade.]
+---\n`;
+  } else {
+    p += `---
+**Rank #[N]: [TICKER] — [COMPANY NAME]**
+🎯 Conviction: [XX]% | Timeframe: weeks to months
+**Entry Zone:** ₹[X]–₹[Y]
+**Target:** ₹[Z] (+[A]%)
+**Stop Loss:** ₹[W] (-[B]%)
+**Bull case:** [Growth drivers, fundamentals, sector tailwinds. 3 sentences.]
+**Bear case:** [Valuation risk, headwinds, what could go wrong. 2 sentences.]
+---\n`;
+  }
+
+  p += `\nStart with Rank #1. Use actual ₹ prices from the live data. Be direct. The user is opening their broker app right now.`;
+  return p;
 }
 
 // ─── Python service helper ────────────────────────────────────────────────────
@@ -433,166 +693,152 @@ router.post('/chat', async (req, res) => {
   sseSetup(res);
 
   try {
-    const messages = [{ role: 'system', content: SYSTEM_PROMPT }];
-
-    // Add conversation history (last 12 exchanges)
+    const llmMessages = [{ role: 'system', content: SYSTEM_PROMPT }];
     for (const msg of history.slice(-12)) {
       if (msg.role === 'user' || msg.role === 'assistant') {
-        messages.push({ role: msg.role, content: msg.content });
+        llmMessages.push({ role: msg.role, content: msg.content });
       }
     }
 
-    // Detect if message is market-related (broad check including company names)
-    const lowerMsg = message.toLowerCase();
-    const isMarketQuery = (
-      /\b(stock|share|price|buy|sell|khareed|becho|rsi|macd|technical|chart|nifty|sensex|fii|dii|sector|rupee|crude|analysis|invest|trading|portfolio|market|kya lagta|kaise|target|entry|exit|support|resistance|earnings|results|quarterly|q[1-4]|profit|revenue|pe ratio|dividend)\b/i.test(message) ||
-      Object.keys(COMPANY_TICKER_MAP).some(name => lowerMsg.includes(name))
-    );
-
-    let liveDataBlock = '';
+    const intent = detectIntent(message);
+    let userPrompt    = message;
+    let tokenLimit    = 1500;
     let sourcesPayload = null;
 
-    if (isMarketQuery) {
-      // Always fetch indices + FII/DII for any market query
-      const [fiiDii, indices] = await Promise.allSettled([
-        pythonGet('/nse/fii-dii'),
+    // ── TOP PICKS (intraday / swing / long-term) ──────────────────────────────
+    if (intent.type === 'top_picks') {
+      tokenLimit = 4500;
+      const ctx = await buildTopPicksContext(intent.n, intent.timeframe, res);
+      userPrompt = buildTopPicksPrompt(message, intent, ctx);
+
+    // ── SPECIFIC STOCK DEEP ANALYSIS ──────────────────────────────────────────
+    } else if (intent.type === 'specific_stock') {
+      tokenLimit = 3000;
+      const ticker = intent.ticker;
+
+      sseSend(res, { type: 'progress', data: `Fetching live price data for ${ticker}...` });
+
+      const [rIdx, rFii] = await Promise.allSettled([
         pythonGet('/market/indices'),
+        pythonGet('/nse/fii-dii'),
       ]);
-      const fii = fiiDii.status === 'fulfilled' ? fiiDii.value : null;
-      const idx = indices.status === 'fulfilled' ? indices.value : null;
+      const fii = rFii.status === 'fulfilled' ? rFii.value : null;
+      const idx = rIdx.status === 'fulfilled' ? rIdx.value : null;
 
-      const today = new Date().toLocaleDateString('en-IN', {
-        day: 'numeric', month: 'long', year: 'numeric',
-      });
-      liveDataBlock += `DATE: ${today} (use this as today's date)\n`;
+      const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+      let liveData = `DATE: ${today}\n`;
+      if (idx?.nifty50?.price)   liveData += `Nifty 50: ${idx.nifty50.price} (${idx.nifty50.change_pct >= 0 ? '+' : ''}${idx.nifty50.change_pct}%)\n`;
+      if (idx?.sensex?.price)    liveData += `Sensex: ${idx.sensex.price} (${idx.sensex.change_pct >= 0 ? '+' : ''}${idx.sensex.change_pct}%)\n`;
+      if (idx?.banknifty?.price) liveData += `Bank Nifty: ${idx.banknifty.price} (${idx.banknifty.change_pct >= 0 ? '+' : ''}${idx.banknifty.change_pct}%)\n`;
+      if (fii?.fii_net != null)  liveData += `FII: ${fii.fii_net >= 0 ? '+' : ''}₹${fii.fii_net} Cr | DII: ${fii.dii_net >= 0 ? '+' : ''}₹${fii.dii_net} Cr | Mood: ${fii.market_mood}\n`;
 
-      if (idx?.nifty50?.price) {
-        liveDataBlock += `Nifty 50: ${idx.nifty50.price} (${idx.nifty50.change_pct >= 0 ? '+' : ''}${idx.nifty50.change_pct}%)\n`;
+      sseSend(res, { type: 'progress', data: `Loading technical indicators for ${ticker}...` });
+
+      const [qRes, fRes, tRes, nRes] = await Promise.allSettled([
+        pythonGet(`/market/quote?ticker=${ticker}.NS`),
+        pythonGet(`/market/fundamentals?ticker=${ticker}.NS`),
+        pythonGet(`/technical/summary?ticker=${ticker}.NS`),
+        pythonGet(`/news/search?q=${encodeURIComponent(ticker + ' India stock')}&hours=72&tag=true&limit=8`),
+      ]);
+
+      sseSend(res, { type: 'progress', data: `Scanning news and sentiment for ${ticker}...` });
+
+      const q    = qRes.status === 'fulfilled' ? qRes.value : null;
+      const fund = fRes.status === 'fulfilled' ? fRes.value : null;
+      const tech = tRes.status === 'fulfilled' ? tRes.value : null;
+      const newsData = nRes.status === 'fulfilled' ? nRes.value : null;
+
+      if (q?.price) {
+        liveData += `\n--- ${q.company || ticker} (${ticker}) LIVE DATA ---\n`;
+        liveData += `Price: ₹${q.price} | Change: ${q.change_pct >= 0 ? '+' : ''}${q.change_pct}%\n`;
+        liveData += `Day Range: ₹${q.day_low}–₹${q.day_high} | Open: ₹${q.open || 'N/A'} | Prev Close: ₹${q.prev_close}\n`;
+        liveData += `52W: ₹${q.week_52_low}–₹${q.week_52_high}\n`;
+        if (q.volume > 0)     liveData += `Volume: ${q.volume.toLocaleString('en-IN')}\n`;
+        if (q.market_cap > 0) liveData += `Market Cap: ₹${(q.market_cap / 1e7).toFixed(0)} Cr\n`;
       }
-      if (idx?.sensex?.price) {
-        liveDataBlock += `Sensex: ${idx.sensex.price} (${idx.sensex.change_pct >= 0 ? '+' : ''}${idx.sensex.change_pct}%)\n`;
+      if (fund?.pe_ratio != null) {
+        liveData += `P/E: ${fund.pe_ratio}`;
+        if (fund.price_to_book) liveData += ` | P/B: ${fund.price_to_book}`;
+        if (fund.roe)           liveData += ` | ROE: ${fund.roe}%`;
+        if (fund.eps)           liveData += ` | EPS: ₹${fund.eps}`;
+        if (fund.sector)        liveData += ` | Sector: ${fund.sector}`;
+        liveData += '\n';
+        if (fund.dividend_yield) liveData += `Dividend Yield: ${fund.dividend_yield}%\n`;
+        if (fund.market_cap_cr)  liveData += `Market Cap (Screener): ₹${fund.market_cap_cr} Cr\n`;
       }
-      if (idx?.banknifty?.price) {
-        liveDataBlock += `Bank Nifty: ${idx.banknifty.price} (${idx.banknifty.change_pct >= 0 ? '+' : ''}${idx.banknifty.change_pct}%)\n`;
-      }
-      if (fii?.fii_net != null) {
-        liveDataBlock += `FII Net: ${fii.fii_net >= 0 ? '+' : ''}₹${fii.fii_net} Cr | DII Net: ${fii.dii_net >= 0 ? '+' : ''}₹${fii.dii_net} Cr | Market Mood: ${fii.market_mood}\n`;
+      if (tech?.rsi?.rsi != null)  liveData += `RSI(14): ${tech.rsi.rsi} [${tech.rsi.signal}] — ${tech.rsi.interpretation || ''}\n`;
+      if (tech?.macd?.trend)       liveData += `MACD: ${tech.macd.trend} | Histogram: ${tech.macd.histogram}\n`;
+      if (tech?.overall_signal)    liveData += `Overall Technical Signal: ${tech.overall_signal}\n`;
+
+      const companyName = q?.company || fund?.company || ticker;
+      const articles = (newsData?.articles || [])
+        .filter(a => a.url && a.title && !a.title.includes('[Removed]'))
+        .slice(0, 6)
+        .map(a => ({ title: a.title, url: a.url, source: a.source, published_at: a.published_at, sentiment: a.sentiment || null }));
+
+      if (articles.length) {
+        liveData += `\nRecent News:\n`;
+        for (const a of articles.slice(0, 5)) liveData += `[${a.sentiment || 'NEUTRAL'}] ${a.title}\n`;
       }
 
-      // Detect specific company/ticker mentioned in message
-      const detectedTicker = detectCompanyTicker(message);
+      sseSend(res, { type: 'progress', data: 'Building full analysis...' });
 
-      if (detectedTicker) {
-        // Fetch full stock context + news in parallel
-        const [qRes, fRes, tRes, nRes] = await Promise.allSettled([
-          pythonGet(`/market/quote?ticker=${detectedTicker}.NS`),
-          pythonGet(`/market/fundamentals?ticker=${detectedTicker}.NS`),
-          pythonGet(`/technical/summary?ticker=${detectedTicker}.NS`),
-          pythonGet(`/news/search?q=${encodeURIComponent(detectedTicker + ' India stock')}&hours=48&tag=true&limit=6`),
+      sourcesPayload = {
+        ticker, company: companyName, price: q?.price || null, articles,
+        links: [
+          { label: 'NSE India',    url: `https://www.nseindia.com/get-quotes/equity?symbol=${ticker}`,                      icon: 'nse'      },
+          { label: 'Screener.in',  url: `https://www.screener.in/company/${ticker}/`,                                        icon: 'screener' },
+          { label: 'TradingView',  url: `https://www.tradingview.com/chart/?symbol=NSE%3A${ticker}`,                        icon: 'chart'    },
+          { label: 'Moneycontrol', url: `https://www.moneycontrol.com/india/stockpricequote/${ticker.toLowerCase()}`,        icon: 'mc'       },
+        ],
+      };
+
+      const tfNote = intent.timeframe === 'intraday' ? ' Focus on intraday setup: entry zone, target, stop loss, and conviction %.'
+        : intent.timeframe === 'swing' ? ' Focus on swing trade setup (2–5 days): entry, target, stop, key catalyst.'
+        : intent.timeframe === 'long_term' ? ' Focus on long-term investment thesis: bull case, bear case, fair value.'
+        : '';
+
+      userPrompt = `${message}${tfNote}\n\n[LIVE STOCK DATA — use ONLY these numbers]\n${liveData}[END LIVE DATA]\n\nProvide:\n1. **Price Snapshot** — where the stock stands right now\n2. **Technical View** — RSI interpretation, MACD state, trend direction\n3. **Fundamental View** — valuation (P/E vs sector), ROE, earnings quality\n4. **News & Sentiment** — positive catalysts, negative risks from recent news\n5. **Verdict** — BUY / SELL / AVOID / HOLD with entry zone, target, stop loss, conviction %`;
+
+    // ── GENERAL MARKET / MIXED QUERY ─────────────────────────────────────────
+    } else {
+      const isMarketQuery = (
+        /\b(stock|share|price|buy|sell|rsi|macd|nifty|sensex|fii|dii|sector|market|invest|trading|portfolio|khareed|becho|target|entry|exit|earnings|results|profit|revenue)\b/i.test(message) ||
+        Object.keys(COMPANY_TICKER_MAP).some(n => message.toLowerCase().includes(n))
+      );
+
+      if (isMarketQuery) {
+        sseSend(res, { type: 'progress', data: 'Checking live market data...' });
+
+        const [rFii, rIdx] = await Promise.allSettled([
+          pythonGet('/nse/fii-dii'),
+          pythonGet('/market/indices'),
         ]);
-        const q    = qRes.status === 'fulfilled' ? qRes.value : null;
-        const fund = fRes.status === 'fulfilled' ? fRes.value : null;
-        const tech = tRes.status === 'fulfilled' ? tRes.value : null;
-        const newsData = nRes.status === 'fulfilled' ? nRes.value : null;
+        const fii = rFii.status === 'fulfilled' ? rFii.value : null;
+        const idx = rIdx.status === 'fulfilled' ? rIdx.value : null;
 
-        if (q?.price) {
-          liveDataBlock += `\n--- ${q.company || detectedTicker} (${detectedTicker}) LIVE DATA from NSE India ---\n`;
-          liveDataBlock += `Current Price: ₹${q.price}\n`;
-          liveDataBlock += `Change Today: ${q.change >= 0 ? '+' : ''}₹${q.change} (${q.change_pct >= 0 ? '+' : ''}${q.change_pct}%)\n`;
-          liveDataBlock += `Day Range: ₹${q.day_low} – ₹${q.day_high}\n`;
-          liveDataBlock += `Open: ₹${q.open || 'N/A'} | Prev Close: ₹${q.prev_close}\n`;
-          liveDataBlock += `52-Week High: ₹${q.week_52_high} | 52-Week Low: ₹${q.week_52_low}\n`;
-          if (q.volume > 0) liveDataBlock += `Volume: ${q.volume.toLocaleString('en-IN')}\n`;
-          if (q.market_cap > 0) liveDataBlock += `Market Cap: ₹${(q.market_cap / 1e7).toFixed(0)} Cr\n`;
-        }
-        if (fund?.pe_ratio != null) {
-          liveDataBlock += `P/E Ratio: ${fund.pe_ratio}\n`;
-          if (fund.price_to_book) liveDataBlock += `P/B: ${fund.price_to_book}\n`;
-          if (fund.roe) liveDataBlock += `ROE: ${fund.roe}%\n`;
-          if (fund.eps) liveDataBlock += `EPS: ₹${fund.eps}\n`;
-          if (fund.sector) liveDataBlock += `Sector: ${fund.sector}\n`;
-          if (fund.dividend_yield) liveDataBlock += `Dividend Yield: ${fund.dividend_yield}%\n`;
-          if (fund.market_cap_cr) liveDataBlock += `Market Cap (Screener): ₹${fund.market_cap_cr} Cr\n`;
-        }
-        if (tech?.rsi?.rsi != null) {
-          liveDataBlock += `RSI(14): ${tech.rsi.rsi} [${tech.rsi.signal}]\n`;
-        }
-        if (tech?.macd?.trend) {
-          liveDataBlock += `MACD: ${tech.macd.trend} | Histogram: ${tech.macd.histogram}\n`;
-        }
-        if (tech?.overall_signal) {
-          liveDataBlock += `Overall Technical Signal: ${tech.overall_signal}\n`;
-        }
+        const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+        let liveData = `DATE: ${today}\n`;
+        if (idx?.nifty50?.price)   liveData += `Nifty 50: ${idx.nifty50.price} (${idx.nifty50.change_pct >= 0 ? '+' : ''}${idx.nifty50.change_pct}%)\n`;
+        if (idx?.sensex?.price)    liveData += `Sensex: ${idx.sensex.price} (${idx.sensex.change_pct >= 0 ? '+' : ''}${idx.sensex.change_pct}%)\n`;
+        if (idx?.banknifty?.price) liveData += `Bank Nifty: ${idx.banknifty.price} (${idx.banknifty.change_pct >= 0 ? '+' : ''}${idx.banknifty.change_pct}%)\n`;
+        if (fii?.fii_net != null)  liveData += `FII: ${fii.fii_net >= 0 ? '+' : ''}₹${fii.fii_net} Cr | DII: ${fii.dii_net >= 0 ? '+' : ''}₹${fii.dii_net} Cr | Mood: ${fii.market_mood}\n`;
 
-        // Build sources payload to send to client
-        const companyName = q?.company || fund?.company || detectedTicker;
-        const articles = (newsData?.articles || [])
-          .filter(a => a.url && a.title && !a.title.includes('[Removed]'))
-          .slice(0, 5)
-          .map(a => ({
-            title:        a.title,
-            url:          a.url,
-            source:       a.source,
-            published_at: a.published_at,
-            sentiment:    a.sentiment || null,
-          }));
-
-        sourcesPayload = {
-          ticker:  detectedTicker,
-          company: companyName,
-          price:   q?.price || null,
-          articles,
-          links: [
-            {
-              label: 'NSE India',
-              url:   `https://www.nseindia.com/get-quotes/equity?symbol=${detectedTicker}`,
-              icon:  'nse',
-            },
-            {
-              label: 'Screener.in',
-              url:   `https://www.screener.in/company/${detectedTicker}/`,
-              icon:  'screener',
-            },
-            {
-              label: 'TradingView',
-              url:   `https://www.tradingview.com/chart/?symbol=NSE%3A${detectedTicker}`,
-              icon:  'chart',
-            },
-            {
-              label: 'Moneycontrol',
-              url:   `https://www.moneycontrol.com/india/stockpricequote/${detectedTicker.toLowerCase()}`,
-              icon:  'mc',
-            },
-          ],
-        };
+        userPrompt = `${message}\n\n[LIVE NSE DATA]\n${liveData}[END LIVE DATA]`;
       }
     }
 
-    // Build final user message with hard grounding instruction
-    const finalMessage = liveDataBlock
-      ? `${message}\n\n[LIVE NSE DATA — fetched right now from NSE India servers. These are the ONLY correct numbers. Do NOT use your training knowledge for any price, ratio, or financial figure. Your training data is outdated and WRONG for current prices.]\n${liveDataBlock}[END LIVE NSE DATA]`
-      : message;
-
-    messages.push({ role: 'user', content: finalMessage });
-
-    // Emit sources before streaming so the client has them ready
-    if (sourcesPayload) {
-      sseSend(res, { type: 'sources', data: sourcesPayload });
-    }
+    if (sourcesPayload) sseSend(res, { type: 'sources', data: sourcesPayload });
     sseSend(res, { type: 'stream_start' });
 
-    const fullContent = await streamNvidia(res, messages, 1500, 0.3);
+    llmMessages.push({ role: 'user', content: userPrompt });
+
+    const fullContent = await streamNvidia(res, llmMessages, tokenLimit, 0.3);
 
     const sid = sessionId || uuidv4();
     Promise.all([
-      pool.query(
-        'INSERT INTO chat_history (user_id, session_id, role, content) VALUES ($1, $2, $3, $4)',
-        [req.userId, sid, 'user', message],
-      ),
-      fullContent && pool.query(
-        'INSERT INTO chat_history (user_id, session_id, role, content) VALUES ($1, $2, $3, $4)',
-        [req.userId, sid, 'assistant', fullContent],
-      ),
+      pool.query('INSERT INTO chat_history (user_id, session_id, role, content) VALUES ($1, $2, $3, $4)', [req.userId, sid, 'user', message]),
+      fullContent && pool.query('INSERT INTO chat_history (user_id, session_id, role, content) VALUES ($1, $2, $3, $4)', [req.userId, sid, 'assistant', fullContent]),
     ]).catch(e => console.error('[Chat] DB save:', e.message));
 
   } catch (err) {

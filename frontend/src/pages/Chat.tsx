@@ -3,7 +3,8 @@ import {
   Send, Square, MessageSquare, Plus, TrendingUp,
   TrendingDown, Minus, AlertCircle, ChevronDown,
   History, X, Languages, Clock, ExternalLink,
-  Newspaper, BarChart2, BookOpen, LineChart,
+  Newspaper, BarChart2, BookOpen, LineChart, CheckCircle2,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { aiApi, SignalStack } from '../lib/api';
@@ -280,36 +281,33 @@ function SourcesPanel({ data }: { data: SourcesData }) {
   );
 }
 
-// ─── Working status animation ─────────────────────────────────────────────────
+// ─── Research Progress (live steps from backend SSE) ─────────────────────────
 
-function WorkingStatus({ messages, visible }: { messages: string[]; visible: boolean }) {
-  const [shownCount, setShownCount] = useState(0);
+function ResearchProgress({ steps, done }: { steps: string[]; done: boolean }) {
+  if (steps.length === 0) return null;
 
-  useEffect(() => {
-    if (!visible) { setShownCount(0); return; }
-    setShownCount(1);
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    messages.forEach((_, i) => {
-      if (i === 0) return;
-      timers.push(setTimeout(() => setShownCount(i + 1), i * 2000));
-    });
-    return () => timers.forEach(clearTimeout);
-  }, [visible, messages]);
-
-  if (!visible) return null;
+  const completedSteps = done ? steps : steps.slice(0, -1);
+  const currentStep   = done ? null   : steps[steps.length - 1];
 
   return (
-    <div className="space-y-1 py-1">
-      {messages.slice(0, shownCount).map((msg, i) => (
-        <p
-          key={i}
-          className="text-xs text-muted-foreground animate-fade-in flex items-center gap-2"
-          style={{ animationDuration: '0.8s', animationFillMode: 'both' }}
-        >
-          <span className="w-1 h-1 rounded-full bg-primary/50 inline-block animate-pulse" />
-          {msg}
-        </p>
+    <div
+      className={cn(
+        'space-y-1.5 py-1 transition-all duration-500',
+        done && 'opacity-0 max-h-0 overflow-hidden py-0',
+      )}
+    >
+      {completedSteps.map((step, i) => (
+        <div key={i} className="flex items-center gap-2 animate-fade-in" style={{ animationDuration: '0.4s' }}>
+          <CheckCircle2 className="w-3 h-3 text-bull/70 flex-shrink-0" />
+          <span className="text-[11px] text-muted-foreground/50 line-through">{step}</span>
+        </div>
       ))}
+      {currentStep && (
+        <div className="flex items-center gap-2 animate-fade-in" style={{ animationDuration: '0.4s' }}>
+          <Loader2 className="w-3 h-3 text-primary flex-shrink-0 animate-spin" />
+          <span className="text-[11px] text-foreground font-medium">{currentStep}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -460,12 +458,12 @@ function HistoryPanel({ sessions, loading, currentSid, onLoadSession, onClose, o
 export default function Chat() {
   const { language, setLanguage } = useAuth();
 
-  const [messages, setMessages]       = useState<Message[]>([]);
-  const [input, setInput]             = useState('');
-  const [streaming, setStreaming]     = useState(false);
-  const [statusMsgs, setStatusMsgs]   = useState<string[]>([]);
-  const [showStatus, setShowStatus]   = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
+  const [messages, setMessages]           = useState<Message[]>([]);
+  const [input, setInput]                 = useState('');
+  const [streaming, setStreaming]         = useState(false);
+  const [progressSteps, setProgressSteps] = useState<string[]>([]);
+  const [progressDone, setProgressDone]   = useState(false);
+  const [historyOpen, setHistoryOpen]     = useState(false);
   const [allHistory, setAllHistory]   = useState<HistoryMsg[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
 
@@ -555,10 +553,8 @@ export default function Chat() {
     setMessages(prev => [...prev, userMsg, aiMsg]);
     setInput('');
     setStreaming(true);
-
-    const statusMessages = pickStatusMessages(text);
-    setStatusMsgs(statusMessages);
-    setShowStatus(true);
+    setProgressSteps([]);
+    setProgressDone(false);
 
     const abort = new AbortController();
     abortRef.current = abort;
@@ -573,19 +569,25 @@ export default function Chat() {
       signal: abort.signal,
 
       onMeta: (key, value) => {
-        if (key === 'stream_start') { streamStarted = true; setShowStatus(false); }
+        if (key === 'stream_start') {
+          streamStarted = true;
+          setProgressDone(true);
+        }
+        if (key === 'progress') {
+          setProgressSteps(prev => [...prev, value as string]);
+        }
         if (key === 'signal_stack') { pendingStack = value as SignalStack; }
         if (key === 'sources')      { pendingSources = value as SourcesData; }
       },
 
       onToken: (token) => {
-        if (!streamStarted) { streamStarted = true; setShowStatus(false); }
+        if (!streamStarted) { streamStarted = true; setProgressDone(true); }
         setMessages(prev => prev.map(m => m.id === aId ? { ...m, content: m.content + token } : m));
       },
 
       onDone: () => {
         setStreaming(false);
-        setShowStatus(false);
+        setProgressDone(true);
         abortRef.current = null;
         setMessages(prev => prev.map(m =>
           m.id === aId
@@ -594,9 +596,12 @@ export default function Chat() {
         ));
         inputRef.current?.focus();
         setAllHistory([]);
+        setTimeout(() => { setProgressSteps([]); setProgressDone(false); }, 600);
       },
 
       onError: (msg) => {
+        setProgressSteps([]);
+        setProgressDone(false);
         setMessages(prev => prev.map(m =>
           m.id === aId ? { ...m, content: msg, streaming: false, error: true } : m,
         ));
@@ -608,7 +613,8 @@ export default function Chat() {
     abortRef.current?.abort();
     abortRef.current = null;
     setStreaming(false);
-    setShowStatus(false);
+    setProgressSteps([]);
+    setProgressDone(false);
     setMessages(prev => prev.map(m =>
       m.id === aiMsgId.current && m.streaming
         ? { ...m, streaming: false, content: m.content + '\n\n*[Response stopped]*' }
@@ -622,20 +628,20 @@ export default function Chat() {
 
   const suggestions = isHindi
     ? [
-        'RELIANCE aaj kharidna chahiye?',
+        'Aaj intraday ke liye top 1 stock batao',
+        'RELIANCE aaj kharidna chahiye ya nahi?',
+        'Top 5 stocks for intraday today',
         'Market mood abhi kaisa hai?',
         'HDFCBANK ka RSI aur MACD batao',
-        'Aaj ke top sectors kaun se hain?',
-        'FII kya kar raha hai market mein?',
-        'INFY pe kya view hai aaj?',
+        'FII kya kar raha hai — kya market bullish hai?',
       ]
     : [
-        'Is RELIANCE a good buy today?',
+        'Top 1 stock to buy for intraday today',
+        'Is RELIANCE a good buy right now?',
+        'Give me top 5 intraday picks for today',
+        'Analyse HDFCBANK — buy, sell or avoid?',
         'What is the market mood right now?',
-        'Analyse HDFCBANK with RSI and MACD',
-        'Give me top sectors to watch today',
-        'What is FII doing in the market?',
-        'INFY pe kya view hai aaj?',
+        'Top 3 swing trade stocks this week',
       ];
 
   return (
@@ -754,7 +760,7 @@ export default function Chat() {
               <MessageBubble msg={msg} />
               {msg.role === 'assistant' && msg.streaming && !msg.content && (
                 <div className="ml-0 mb-2 px-4 pb-1">
-                  <WorkingStatus messages={statusMsgs} visible={showStatus} />
+                  <ResearchProgress steps={progressSteps} done={progressDone} />
                 </div>
               )}
             </div>
