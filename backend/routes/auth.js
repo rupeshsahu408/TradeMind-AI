@@ -105,6 +105,43 @@ router.post('/logout', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
+// POST /api/auth/change-pin — change PIN (requires current PIN + new PIN)
+router.post('/change-pin', requireAuth, async (req, res) => {
+  try {
+    const { current_pin, new_pin } = req.body;
+
+    if (!current_pin || !new_pin) {
+      return res.status(400).json({ error: 'Both current_pin and new_pin are required.' });
+    }
+    if (!/^\d{4,6}$/.test(new_pin)) {
+      return res.status(400).json({ error: 'New PIN must be 4 to 6 digits.' });
+    }
+    if (current_pin === new_pin) {
+      return res.status(400).json({ error: 'New PIN must be different from current PIN.' });
+    }
+
+    // Fetch current hash
+    const result = await pool.query('SELECT pin_hash FROM users WHERE id = $1', [req.userId]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    const isValid = await bcrypt.compare(current_pin, result.rows[0].pin_hash);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Current PIN is incorrect.' });
+    }
+
+    const new_hash = await bcrypt.hash(new_pin, SALT_ROUNDS);
+    await pool.query('UPDATE users SET pin_hash = $1 WHERE id = $2', [new_hash, req.userId]);
+
+    console.log('[Auth] PIN changed for user:', req.userId);
+    res.json({ success: true, message: 'PIN changed successfully.' });
+  } catch (err) {
+    console.error('[Auth] Change PIN error:', err.message);
+    res.status(500).json({ error: 'Failed to change PIN. Please try again.' });
+  }
+});
+
 // GET /api/auth/me — get current user info (requires auth)
 router.get('/me', requireAuth, async (req, res) => {
   try {

@@ -555,6 +555,76 @@ export const pushApi = {
     api.post<{ success: boolean; sent: number }>('/push/test'),
 };
 
+// ─── Events Calendar — Phase 8 ────────────────────────────────────────────────
+
+export interface CalendarEvent {
+  id: string;
+  type: 'rbi' | 'fed' | 'holiday' | 'budget' | 'expiry' | 'earnings';
+  type_label: string;
+  date: string;
+  title: string;
+  description: string;
+  impact: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  days_until: number;
+  ticker?: string;
+}
+
+export const eventsApi = {
+  list: (from?: string, to?: string, type?: string) => {
+    const q = new URLSearchParams();
+    if (from) q.set('from', from);
+    if (to)   q.set('to', to);
+    if (type) q.set('type', type);
+    return api.get<{ events: CalendarEvent[]; total: number }>(`/events${q.toString() ? '?' + q.toString() : ''}`);
+  },
+};
+
+// ─── Preferences — Phase 8 ────────────────────────────────────────────────────
+
+export interface UserPreferences {
+  trading_style: 'intraday' | 'swing' | 'investing' | 'all';
+  risk_appetite: 'conservative' | 'moderate' | 'aggressive';
+  min_confidence: number;
+  focus_sectors: string[] | null;
+  notifications_enabled: boolean;
+  briefing_auto: boolean;
+}
+
+export const preferencesApi = {
+  get:    () => api.get<{ preferences: UserPreferences }>('/preferences'),
+  update: (prefs: Partial<UserPreferences>) => api.put<{ preferences: UserPreferences; updated: boolean }>('/preferences', prefs),
+};
+
+// ─── History / Research Log — Phase 8 ────────────────────────────────────────
+
+export const historyApi = {
+  sessions: () =>
+    api.get<{ sessions: Array<{ session_id: string; started_at: string; last_message_at: string; message_count: number; preview: string }> }>('/history/sessions'),
+
+  session: (sid: string) =>
+    api.get<{ messages: Array<{ id: number; role: string; content: string; created_at: string }>; session_id: string }>(`/history/session/${sid}`),
+
+  briefings: (limit?: number) =>
+    api.get<{ briefings: Array<{ id: number; market_mood: string; fii_net_flow: string; generated_at: string; preview: string; picks_count: number }> }>(`/history/briefings${limit ? '?limit=' + limit : ''}`),
+
+  briefing: (id: number) =>
+    api.get<{ briefing: { id: number; content: string; market_mood: string; fii_net_flow: string; generated_at: string; top_picks: string[] } }>(`/history/briefing/${id}`),
+
+  analyses: (ticker?: string, limit?: number) => {
+    const q = new URLSearchParams();
+    if (ticker) q.set('ticker', ticker);
+    if (limit)  q.set('limit', String(limit));
+    return api.get<{ analyses: Array<{ id: number; ticker: string; company_name: string; verdict: string; confidence: number; signal_stack_score: number; market_price_at_prediction: string; timeframe: string; predicted_at: string; reasoning_preview: string }> }>(`/history/analyses${q.toString() ? '?' + q.toString() : ''}`);
+  },
+
+  search: (q: string) =>
+    api.get<{ results: Array<{ source_type: string; id: number; session_id: string | null; role: string | null; created_at: string; excerpt: string; ticker: string | null }>; total: number; query: string }>(`/history/search?q=${encodeURIComponent(q)}`),
+};
+
+// ─── Auth extension — Phase 8 ─────────────────────────────────────────────────
+export const authChangePin = (current_pin: string, new_pin: string) =>
+  api.post<{ success: boolean; message: string }>('/auth/change-pin', { current_pin, new_pin });
+
 // ─── Sentiment ────────────────────────────────────────────────────────────────
 
 export interface RedditSentiment {

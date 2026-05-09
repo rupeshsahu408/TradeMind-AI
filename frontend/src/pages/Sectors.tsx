@@ -1,10 +1,11 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   BarChart2, Zap, Square, AlertCircle, TrendingUp, TrendingDown,
   Building2, Cpu, Pill, Car, ShoppingBag, Factory, Zap as Energy, Home,
+  RefreshCw, Activity,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { aiApi } from '../lib/api';
+import { aiApi, api } from '../lib/api';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 
 // ─── Sector definitions ───────────────────────────────────────────────────────
@@ -28,6 +29,189 @@ const SECTORS: SectorDef[] = [
   { id: 'Energy & Power',       label: 'Energy',         icon: Energy,      color: 'text-yellow-400', description: 'NTPC, Power Grid, Tata Power, Adani Green', keywords: 'crude prices, PLI, green energy capex' },
   { id: 'Real Estate',          label: 'Realty',         icon: Home,        color: 'text-pink-400',   description: 'DLF, Godrej Properties, Prestige, Brigade', keywords: 'RBI rates, inventory, launches' },
 ];
+
+// ─── Live sector data ─────────────────────────────────────────────────────────
+
+interface SectorLive {
+  name: string;
+  index_name: string;
+  price: number;
+  change: number;
+  change_pct: number;
+  day_high: number;
+  day_low: number;
+}
+
+function heatColor(pct: number): string {
+  if (pct >= 2)    return 'bg-bull/20 border-bull/30 text-bull';
+  if (pct >= 1)    return 'bg-bull/12 border-bull/20 text-bull';
+  if (pct >= 0.25) return 'bg-bull/8 border-bull/15 text-emerald-400';
+  if (pct >= -0.25) return 'bg-muted/60 border-border text-muted-foreground';
+  if (pct >= -1)   return 'bg-bear/8 border-bear/15 text-orange-400';
+  if (pct >= -2)   return 'bg-bear/12 border-bear/20 text-bear';
+  return 'bg-bear/20 border-bear/30 text-bear';
+}
+
+function SectorHeatMap() {
+  const [sectors, setSectors]   = useState<SectorLive[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState('');
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  async function fetchSectors() {
+    setLoading(true); setError('');
+    try {
+      const data = await api.get<{ sectors: SectorLive[]; timestamp: string }>('/nse/sectors');
+      setSectors(data.sectors || []);
+      setLastUpdated(new Date());
+    } catch (e: unknown) {
+      setError('Live data unavailable');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => { fetchSectors(); }, []);
+
+  const topGainer = sectors.reduce((a, b) => b.change_pct > a.change_pct ? b : a, sectors[0] ?? null);
+  const topLoser  = sectors.reduce((a, b) => b.change_pct < a.change_pct ? b : a, sectors[0] ?? null);
+
+  return (
+    <div className="flex-shrink-0 border-b border-border">
+      <div className="px-5 py-2.5 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Activity className="w-3.5 h-3.5 text-primary" />
+          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            Live Sector Performance
+          </span>
+          {lastUpdated && (
+            <span className="text-[10px] text-muted-foreground">
+              · {lastUpdated.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={fetchSectors}
+          disabled={loading}
+          className="text-muted-foreground hover:text-foreground transition-colors p-1 rounded"
+        >
+          <RefreshCw className={cn('w-3 h-3', loading && 'animate-spin')} />
+        </button>
+      </div>
+
+      {error && (
+        <div className="px-5 pb-2 text-[10px] text-muted-foreground flex items-center gap-1">
+          <AlertCircle className="w-3 h-3 text-bear" />
+          {error} — market may be closed
+        </div>
+      )}
+
+      {loading && !error && (
+        <div className="px-5 pb-3">
+          <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+            {[1,2,3,4,5,6].map(i => (
+              <div key={i} className="h-14 rounded-lg bg-muted animate-pulse" />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!loading && sectors.length > 0 && (
+        <div className="px-5 pb-3 space-y-2">
+          {/* Heat map grid */}
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-1.5">
+            {sectors.map(s => (
+              <div
+                key={s.name}
+                className={cn(
+                  'rounded-lg border px-2.5 py-2 flex flex-col gap-0.5 cursor-default transition-all hover:scale-[1.02]',
+                  heatColor(s.change_pct),
+                )}
+                title={`${s.index_name}\n₹${s.price.toLocaleString('en-IN')}\n${s.change_pct >= 0 ? '+' : ''}${s.change_pct}%`}
+              >
+                <span className="text-[10px] font-bold leading-tight">{s.name}</span>
+                <span className="text-xs font-semibold tabular-nums">
+                  {s.change_pct >= 0 ? '+' : ''}{s.change_pct.toFixed(2)}%
+                </span>
+                <span className="text-[9px] opacity-70 tabular-nums">
+                  {s.change >= 0 ? '+' : ''}
+                  {s.change < 100 ? s.change.toFixed(1) : s.change.toFixed(0)}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* FII sector flow bar chart proxy — uses live change_pct as proxy */}
+          {sectors.length >= 4 && (
+            <div className="pt-1">
+              <p className="text-[10px] text-muted-foreground mb-1.5 font-medium">
+                Sector Momentum Spectrum (today's change %)
+              </p>
+              <div className="space-y-1">
+                {[...sectors]
+                  .sort((a, b) => b.change_pct - a.change_pct)
+                  .map(s => {
+                    const maxAbs = Math.max(...sectors.map(x => Math.abs(x.change_pct)), 1);
+                    const barPct = Math.abs(s.change_pct) / maxAbs * 100;
+                    const pos    = s.change_pct >= 0;
+                    return (
+                      <div key={s.name} className="flex items-center gap-2">
+                        <span className="text-[10px] text-muted-foreground w-16 flex-shrink-0 truncate text-right">{s.name}</span>
+                        <div className="flex-1 flex items-center gap-1 h-4">
+                          <div className="flex-1 flex justify-end">
+                            {!pos && (
+                              <div
+                                className="h-3 rounded-l-full bg-bear/60"
+                                style={{ width: `${barPct}%` }}
+                              />
+                            )}
+                          </div>
+                          <div className="w-px h-4 bg-border flex-shrink-0" />
+                          <div className="flex-1 flex justify-start">
+                            {pos && (
+                              <div
+                                className="h-3 rounded-r-full bg-bull/60"
+                                style={{ width: `${barPct}%` }}
+                              />
+                            )}
+                          </div>
+                        </div>
+                        <span className={cn('text-[10px] tabular-nums w-12 flex-shrink-0', pos ? 'text-bull' : 'text-bear')}>
+                          {pos ? '+' : ''}{s.change_pct.toFixed(2)}%
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+
+          {/* Summary chips */}
+          {topGainer && topLoser && topGainer.name !== topLoser.name && (
+            <div className="flex items-center gap-2 pt-0.5 flex-wrap">
+              <span className="text-[10px] text-muted-foreground">Today:</span>
+              <span className="text-[10px] text-bull bg-bull/10 border border-bull/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <TrendingUp className="w-2.5 h-2.5" />
+                {topGainer.name} +{topGainer.change_pct.toFixed(2)}%
+              </span>
+              <span className="text-[10px] text-bear bg-bear/10 border border-bear/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <TrendingDown className="w-2.5 h-2.5" />
+                {topLoser.name} {topLoser.change_pct.toFixed(2)}%
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* No data */}
+      {!loading && sectors.length === 0 && !error && (
+        <div className="px-5 pb-3">
+          <p className="text-[10px] text-muted-foreground">No sector data — market may be closed.</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─── Sector selector card ─────────────────────────────────────────────────────
 
@@ -61,7 +245,7 @@ function SectorCard({
   );
 }
 
-// ─── Working status ───────────────────────────────────────────────────────────
+// ─── Status cycle ─────────────────────────────────────────────────────────────
 
 const STATUS_CYCLE = [
   'Reading FII sector flows...',
@@ -112,24 +296,20 @@ export default function Sectors() {
 
     aiApi.sectorAnalysis(sector.id, {
       signal: abort.signal,
-
       onMeta: (key) => {
         if (key === 'fetching')     { setFetching(true);  setStreaming(false); }
         if (key === 'stream_start') { setFetching(false); setStreaming(true);  }
       },
-
       onToken: (token) => {
         setFetching(false);
         setStreaming(true);
         setContent(prev => prev + token);
       },
-
       onDone: () => {
         setFetching(false);
         setStreaming(false);
         abortRef.current = null;
       },
-
       onError: (msg) => {
         setError(msg);
         setFetching(false);
@@ -157,7 +337,7 @@ export default function Sectors() {
           <BarChart2 className="w-4 h-4 text-primary" />
           <h1 className="text-sm font-semibold text-foreground">Sector Radar</h1>
           <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
-            AI Analysis
+            Live + AI
           </span>
         </div>
         {isActive && (
@@ -171,10 +351,13 @@ export default function Sectors() {
         )}
       </div>
 
-      {/* ── Sector grid ────────────────────────────────────────────────────── */}
+      {/* ── Live sector heat map ────────────────────────────────────────────── */}
+      <SectorHeatMap />
+
+      {/* ── Sector grid for AI analysis ─────────────────────────────────────── */}
       <div className="flex-shrink-0 px-5 py-3 border-b border-border">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-          Select a sector for AI analysis
+          Select a sector for deep AI analysis
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {SECTORS.map(s => (
@@ -189,10 +372,10 @@ export default function Sectors() {
         </div>
       </div>
 
-      {/* ── Analysis area ──────────────────────────────────────────────────── */}
+      {/* ── AI Analysis area ──────────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto px-5 py-5">
 
-        {/* Idle / empty state */}
+        {/* Idle state */}
         {!selectedSector && (
           <div className="flex flex-col items-center justify-center h-full text-center py-12">
             <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
@@ -208,10 +391,9 @@ export default function Sectors() {
         {/* Active section */}
         {selectedSector && (
           <div className="max-w-3xl space-y-4">
-
             {/* Sector header */}
             <div className="flex items-center gap-3">
-              <div className={cn('w-9 h-9 rounded-xl bg-secondary flex items-center justify-center flex-shrink-0')}>
+              <div className="w-9 h-9 rounded-xl bg-secondary flex items-center justify-center flex-shrink-0">
                 <SectorIcon className={cn('w-4.5 h-4.5', selectedSector.color)} />
               </div>
               <div className="flex-1 min-w-0">
@@ -235,7 +417,7 @@ export default function Sectors() {
               )}
             </div>
 
-            {/* Status message while fetching */}
+            {/* Loading */}
             {fetching && !content && (
               <div className="flex items-center justify-center py-12 flex-col gap-3">
                 <div className="relative w-10 h-10">

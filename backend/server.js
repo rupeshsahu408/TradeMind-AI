@@ -41,6 +41,11 @@ app.use('/api/watchlist', require('./routes/watchlist'));
 app.use('/api/accuracy',  require('./routes/accuracy'));
 app.use('/api/push',      require('./routes/notifications'));
 
+// ─── Phase 8 Routes ───────────────────────────────────────────────────────────
+app.use('/api/events',      require('./routes/events'));
+app.use('/api/preferences', require('./routes/preferences'));
+app.use('/api/history',     require('./routes/history'));
+
 // ─── Data Engine Proxy Routes (Phase 2 + 3) ───────────────────────────────────
 // All requests forwarded to Python data service at PYTHON_SERVICE_URL (default localhost:8000)
 // Auth is enforced inside the proxy router

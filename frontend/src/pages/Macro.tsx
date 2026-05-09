@@ -243,6 +243,127 @@ function GiftNiftyCard() {
   );
 }
 
+// ─── Rupee Impact Analyzer ────────────────────────────────────────────────────
+// User enters a USD/INR % change → AI calculates which sectors benefit or suffer.
+
+function RupeeImpactAnalyzer() {
+  const [inputVal, setInputVal]   = useState('');
+  const [content, setContent]     = useState('');
+  const [fetching, setFetching]   = useState(false);
+  const [streaming, setStreaming] = useState(false);
+  const [error, setError]         = useState('');
+  const abortRef = useRef<AbortController | null>(null);
+
+  function run() {
+    const pct = parseFloat(inputVal);
+    if (isNaN(pct) || inputVal.trim() === '') return;
+    abortRef.current?.abort();
+    setContent(''); setError(''); setFetching(true); setStreaming(false);
+    const abort = new AbortController();
+    abortRef.current = abort;
+
+    aiApi.chat(
+      `Rupee Impact Analysis: USD/INR moves by ${pct >= 0 ? '+' : ''}${pct}% (i.e., the Indian Rupee ${pct >= 0 ? 'depreciates' : 'appreciates'} by ${Math.abs(pct)}% against the USD). Analyse the sector-by-sector impact on NSE-listed Indian stocks. For each major sector (IT, Banking, Pharma, Auto, FMCG, Metals, Energy, Real Estate), state whether this move is POSITIVE, NEGATIVE, or NEUTRAL — and give the specific reason with 1–2 key stock examples per sector. Use a professional trader tone. Be concise and precise. No filler.`,
+      [],
+      'rupee-impact-' + Date.now(),
+      {
+        signal:  abort.signal,
+        onMeta:  (key) => {
+          if (key === 'fetching')     { setFetching(true);  setStreaming(false); }
+          if (key === 'stream_start') { setFetching(false); setStreaming(true);  }
+        },
+        onToken: (t) => { setFetching(false); setStreaming(true); setContent(p => p + t); },
+        onDone:  ()  => { setStreaming(false); setFetching(false); abortRef.current = null; },
+        onError: (m) => { setError(m); setFetching(false); setStreaming(false); },
+      },
+    );
+  }
+
+  function stop() {
+    abortRef.current?.abort(); abortRef.current = null;
+    setFetching(false); setStreaming(false);
+  }
+
+  const isActive = fetching || streaming;
+  const pctNum   = parseFloat(inputVal);
+
+  return (
+    <section className="trading-card space-y-3">
+      <div className="flex items-center gap-2 px-1 mb-1">
+        <DollarSign className="w-4 h-4 text-primary" />
+        <h2 className="text-sm font-semibold text-foreground">Rupee Impact Analyzer</h2>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Enter a USD/INR movement (%) to see which Indian sectors and stocks benefit or suffer.
+      </p>
+
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">%</span>
+          <input
+            type="number"
+            value={inputVal}
+            onChange={e => setInputVal(e.target.value)}
+            placeholder="e.g. +2 (rupee falls) or -2 (rupee rises)"
+            step="0.5"
+            className="w-full pl-7 pr-3 py-2.5 text-sm bg-accent/40 border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40"
+            onKeyDown={e => { if (e.key === 'Enter' && !isActive) run(); }}
+          />
+        </div>
+        {isActive ? (
+          <button onClick={stop} className="flex items-center gap-1 text-xs text-bear border border-bear/20 px-3 py-2.5 rounded-lg hover:bg-bear/5 transition-colors flex-shrink-0">
+            <Square className="w-3 h-3 fill-current" /> Stop
+          </button>
+        ) : (
+          <button
+            onClick={run}
+            disabled={!inputVal.trim() || isNaN(pctNum)}
+            className="flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-2.5 rounded-lg hover:bg-primary/90 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+          >
+            <Zap className="w-3 h-3" /> Analyse
+          </button>
+        )}
+      </div>
+
+      {/* Quick presets */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-[10px] text-muted-foreground">Quick:</span>
+        {['+1', '+2', '+5', '-1', '-2', '-5'].map(v => (
+          <button
+            key={v}
+            onClick={() => setInputVal(v)}
+            className={cn(
+              'text-[10px] px-2 py-0.5 rounded border transition-colors',
+              parseFloat(v) > 0
+                ? 'border-bear/30 text-bear hover:bg-bear/5'
+                : 'border-bull/30 text-bull hover:bg-bull/5',
+              inputVal === v && 'ring-1 ring-primary',
+            )}
+          >
+            {v}%
+          </button>
+        ))}
+      </div>
+
+      {fetching && !content && (
+        <div className="flex items-center gap-2 py-2">
+          <div className="w-3.5 h-3.5 border-2 border-primary border-t-transparent rounded-full animate-spin flex-shrink-0" />
+          <p className="text-xs text-muted-foreground">Calculating sector impact…</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-start gap-2 p-3 rounded-lg border border-bear/20 bg-bear/5">
+          <AlertCircle className="w-4 h-4 text-bear flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-muted-foreground">{error}</p>
+        </div>
+      )}
+
+      {content && <MarkdownRenderer content={content} streaming={streaming} />}
+    </section>
+  );
+}
+
 // ─── AI Macro Analysis section ───────────────────────────────────────────────
 
 function MacroAISection() {
@@ -361,6 +482,9 @@ export default function Macro() {
 
       {/* AI Macro Analysis */}
       <MacroAISection />
+
+      {/* Rupee Impact Analyzer */}
+      <RupeeImpactAnalyzer />
 
       {/* 2-column grid for wider screens */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
