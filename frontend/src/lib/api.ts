@@ -453,6 +453,108 @@ export const aiApi = {
     api.get<{ predictions: unknown[] }>('/predictions'),
 };
 
+// ─── Watchlist — Phase 7 ──────────────────────────────────────────────────────
+
+export interface WatchlistItem {
+  id: number;
+  ticker: string;
+  company_name: string;
+  added_at: string;
+  price: number | null;
+  change: number | null;
+  change_pct: number | null;
+  day_high: number | null;
+  day_low: number | null;
+  week_52_high: number | null;
+  week_52_low: number | null;
+  volume: number | null;
+  market_cap: number | null;
+  prev_close: number | null;
+  sentiment_pulse: 'POSITIVE' | 'NEGATIVE' | 'NEUTRAL';
+  news_count: number;
+}
+
+export const watchlistApi = {
+  get:    () =>
+    api.get<{ watchlist: WatchlistItem[] }>('/watchlist'),
+
+  add:    (ticker: string) =>
+    api.post<{ success: boolean; item: WatchlistItem }>('/watchlist', { ticker }),
+
+  remove: (id: number) =>
+    api.delete<{ success: boolean; removed: string }>(`/watchlist/${id}`),
+};
+
+// ─── Accuracy Tracker — Phase 7 ───────────────────────────────────────────────
+
+export interface PredictionRow {
+  id: number;
+  ticker: string;
+  company_name: string;
+  verdict: string;
+  confidence: number;
+  signal_stack_score: number | null;
+  reasoning: string | null;
+  predicted_at: string;
+  market_price_at_prediction: string | null;
+  actual_close_price: string | null;
+  actual_change_pct: string | null;
+  was_correct: boolean | null;
+  checked_at: string | null;
+  accuracy_notes: string | null;
+}
+
+export interface AccuracyStats {
+  all_time: {
+    total_checked: string;
+    hits: string;
+    misses: string;
+    accuracy_pct: string | null;
+    total_predictions: string;
+  };
+  last_7_days:  { total_checked: string; hits: string; accuracy_pct: string | null };
+  last_30_days: { total_checked: string; hits: string; accuracy_pct: string | null };
+  by_verdict:   Array<{ verdict: string; checked: string; hits: string; accuracy_pct: string | null }>;
+  by_ticker:    Array<{ ticker: string; company_name: string; checked: string; hits: string; accuracy_pct: string | null }>;
+  trend:        Array<{ date: string; checked: string; hits: string; accuracy_pct: string | null }>;
+  pending_checks: number;
+}
+
+export type AccuracyFilter = 'all' | 'hits' | 'misses' | 'pending';
+
+export const accuracyApi = {
+  predictions: (filter: AccuracyFilter = 'all', ticker?: string, limit = 100) => {
+    const q = new URLSearchParams({ filter, limit: String(limit) });
+    if (ticker) q.set('ticker', ticker.toUpperCase());
+    return api.get<{ predictions: PredictionRow[]; total: number }>(`/accuracy/predictions?${q}`);
+  },
+
+  stats: () =>
+    api.get<AccuracyStats>('/accuracy/stats'),
+
+  checkOne: (predictionId: number) =>
+    api.post<{ success: boolean; was_correct: boolean | null; actual_close: number; ticker: string }>(`/accuracy/check/${predictionId}`),
+
+  runAll: () =>
+    api.post<{ success: boolean; checked: number; hits: number; misses: number; errors: number }>('/accuracy/run'),
+};
+
+// ─── Push Notifications — Phase 7 ────────────────────────────────────────────
+
+export const pushApi = {
+  vapidKey: () =>
+    api.get<{ publicKey: string }>('/push/vapid-key'),
+
+  subscribe: (subscription: PushSubscriptionJSON) =>
+    api.post<{ success: boolean }>('/push/subscribe', subscription),
+
+  unsubscribe: (endpoint: string) =>
+    api.delete<{ success: boolean }>('/push/unsubscribe'),
+
+  test: () =>
+    api.post<{ success: boolean; sent: number }>('/push/test'),
+};
+
 // ─── Sentiment ────────────────────────────────────────────────────────────────
 
 export interface RedditSentiment {

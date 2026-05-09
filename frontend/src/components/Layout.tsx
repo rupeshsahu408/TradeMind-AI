@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useNotifications } from '../hooks/useNotifications';
 import { cn } from '../lib/utils';
 import {
   LayoutDashboard,
@@ -21,6 +22,9 @@ import {
   Menu,
   Languages,
   Zap,
+  Bell,
+  BellOff,
+  BellRing,
 } from 'lucide-react';
 
 const navItems = [
@@ -46,6 +50,19 @@ export default function Layout({ children }: LayoutProps) {
   const { logout, language, setLanguage } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { status: notifStatus, isEnabled, isLoading: notifLoading, enable, disable } = useNotifications();
+  const [showNotifBanner, setShowNotifBanner] = useState(false);
+
+  // Show banner once per session if notifications not yet enabled/denied
+  useEffect(() => {
+    if (notifStatus === 'default') {
+      const shown = sessionStorage.getItem('notif-banner-shown');
+      if (!shown) {
+        setTimeout(() => setShowNotifBanner(true), 3000);
+        sessionStorage.setItem('notif-banner-shown', '1');
+      }
+    }
+  }, [notifStatus]);
 
   const isHindi = language === 'hindi';
 
@@ -107,6 +124,40 @@ export default function Layout({ children }: LayoutProps) {
 
         {/* Bottom controls */}
         <div className="border-t border-border p-3 space-y-1">
+          {/* Notifications toggle */}
+          {notifStatus !== 'unsupported' && notifStatus !== 'loading' && (
+            <button
+              onClick={isEnabled ? disable : enable}
+              disabled={notifLoading || notifStatus === 'denied'}
+              className={cn(
+                'flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm transition-colors',
+                isEnabled
+                  ? 'bg-primary/10 text-primary hover:bg-primary/15'
+                  : notifStatus === 'denied'
+                  ? 'text-muted-foreground/40 cursor-not-allowed'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+              )}
+              title={
+                notifStatus === 'denied'
+                  ? 'Notifications blocked — enable in browser settings'
+                  : isEnabled ? 'Disable push notifications' : 'Enable push notifications'
+              }
+            >
+              {isEnabled
+                ? <BellRing className="w-4 h-4 flex-shrink-0" />
+                : notifStatus === 'denied'
+                ? <BellOff className="w-4 h-4 flex-shrink-0" />
+                : <Bell className="w-4 h-4 flex-shrink-0" />
+              }
+              <span className="flex-1 text-left text-sm truncate">
+                {notifLoading ? 'Updating…' : isEnabled ? 'Alerts ON' : notifStatus === 'denied' ? 'Alerts Blocked' : 'Enable Alerts'}
+              </span>
+              {isEnabled && (
+                <span className="w-2 h-2 rounded-full bg-primary animate-pulse flex-shrink-0" />
+              )}
+            </button>
+          )}
+
           {/* Language toggle */}
           <button
             onClick={toggleLanguage}
@@ -172,6 +223,29 @@ export default function Layout({ children }: LayoutProps) {
             {isHindi ? 'HI' : 'EN'}
           </button>
         </header>
+
+        {/* Push notification opt-in banner */}
+        {showNotifBanner && (
+          <div className="flex items-center gap-3 px-4 py-2.5 bg-primary/10 border-b border-primary/20 text-sm">
+            <BellRing className="w-4 h-4 text-primary flex-shrink-0" />
+            <span className="flex-1 text-foreground">
+              Get real-time alerts for Nifty swings, FII activity, and high-conviction calls.
+            </span>
+            <button
+              onClick={() => { enable(); setShowNotifBanner(false); }}
+              disabled={notifLoading}
+              className="px-3 py-1 rounded bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors flex-shrink-0"
+            >
+              Enable
+            </button>
+            <button
+              onClick={() => setShowNotifBanner(false)}
+              className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 text-xs"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto scrollbar-thin">

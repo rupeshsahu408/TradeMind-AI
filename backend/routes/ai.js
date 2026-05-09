@@ -505,13 +505,39 @@ Be direct. Use specific numbers. Speak like a senior prop trader delivering a ca
 
     const fullContent = await streamNvidia(res, messages, 2200, 0.25);
 
-    // Log prediction to DB
+    // Log prediction to DB — include market_price_at_prediction for accuracy tracking
+    const currentPrice = q?.price ? parseFloat(q.price) : null;
     pool.query(
-      `INSERT INTO predictions (user_id, ticker, company_name, verdict, confidence, signal_stack_score, reasoning)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [req.userId, sym, fund?.company || sym, stack.verdict, stack.confidence,
-       stack.bullishCount, `Signals: ${stack.signals.map(s => `${s.name}:${s.value}`).join(', ')}`],
+      `INSERT INTO predictions
+         (user_id, ticker, company_name, verdict, confidence, signal_stack_score,
+          reasoning, market_price_at_prediction, timeframe)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [
+        req.userId, sym, fund?.company || sym,
+        stack.verdict, stack.confidence, stack.bullishCount,
+        `Signals: ${stack.signals.map(s => `${s.name}:${s.value}`).join(', ')}`,
+        currentPrice,
+        'swing',
+      ],
     ).catch(e => console.error('[Analyze] DB save:', e.message));
+
+    // High-conviction call notification: 90%+ confidence → push to user
+    if (stack.confidence >= 90) {
+      try {
+        const { sendToUser } = require('./notifications');
+        const emoji = stack.verdict.includes('BUY') ? '🚀' : '⚠️';
+        sendToUser(req.userId, {
+          title: `${emoji} High Conviction Call — ${sym}`,
+          body:  `${stack.verdict} | ${stack.confidence}% confidence | ${stack.bullishCount}/5 signals. Tap to review.`,
+          icon:  '/favicon.ico',
+          badge: '/favicon.ico',
+          tag:   `conviction-${sym}`,
+          data:  { url: `/stock/${sym}` },
+        });
+      } catch (e) {
+        console.warn('[Analyze] Could not send conviction notification:', e.message);
+      }
+    }
 
   } catch (err) {
     console.error('[Analyze] Error:', err.message);
