@@ -1,92 +1,112 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '../.env'))
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "../.env"))
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from datetime import datetime
 
+from routes.market    import router as market_router
+from routes.nse       import router as nse_router
+from routes.technical import router as technical_router
+from routes.screener  import router as screener_router
+from routes.macro     import router as macro_router
+
 app = FastAPI(
     title="Billionaire AI — Data Service",
-    description="Python microservice for market data, news, and sentiment fetching",
-    version="1.0.0",
+    description="Python microservice for NSE/BSE market data, technical indicators, and macro data.",
+    version="2.0.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3001", "http://localhost:5000"],
+    allow_origins=[
+        "http://localhost:3001",
+        "http://localhost:5000",
+        "http://localhost:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ─── Health Check ─────────────────────────────────────────────────────────────
+# ─── Register routers ─────────────────────────────────────────────────────────
+app.include_router(market_router)
+app.include_router(nse_router)
+app.include_router(technical_router)
+app.include_router(screener_router)
+app.include_router(macro_router)
 
+
+# ─── Health ───────────────────────────────────────────────────────────────────
 @app.get("/health")
 async def health_check():
+    def _ver(mod_name: str) -> str:
+        try:
+            import importlib
+            m = importlib.import_module(mod_name)
+            return getattr(m, "__version__", "loaded")
+        except Exception:
+            return "unavailable"
+
     return {
-        "status": "ok",
-        "service": "Billionaire AI Data Service",
-        "version": "1.0.0",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
-        "python_env": "ready",
+        "status":      "ok",
+        "service":     "Billionaire AI Data Service",
+        "version":     "2.0.0",
+        "timestamp":   datetime.utcnow().isoformat() + "Z",
+        "python_env":  "ready",
+        "phase":       "2 — Data Engine",
         "libraries": {
-            "yfinance": "loaded",
-            "requests": "loaded",
-            "beautifulsoup4": "loaded",
-            "feedparser": "loaded",
-            "pytrends": "loaded",
-        }
+            "yfinance":      _ver("yfinance"),
+            "httpx":         _ver("httpx"),
+            "beautifulsoup4": _ver("bs4"),
+            "feedparser":    _ver("feedparser"),
+            "pytrends":      _ver("pytrends"),
+            "pandas":        _ver("pandas"),
+        },
+        "endpoints": {
+            "market":    ["/market/quote", "/market/indices", "/market/history",
+                          "/market/fundamentals", "/market/earnings", "/market/intraday"],
+            "nse":       ["/nse/fii-dii", "/nse/options", "/nse/top-movers", "/nse/circuit-stocks"],
+            "technical": ["/technical/rsi", "/technical/macd", "/technical/bollinger",
+                          "/technical/ema", "/technical/summary"],
+            "screener":  ["/screener/fundamentals"],
+            "macro":     ["/macro/commodities", "/macro/forex", "/macro/sgx-nifty",
+                          "/macro/global-indices", "/macro/snapshot"],
+        },
     }
 
-# ─── Root ─────────────────────────────────────────────────────────────────────
 
+# ─── Root ─────────────────────────────────────────────────────────────────────
 @app.get("/")
 async def root():
     return {
-        "message": "Billionaire AI Data Service is running.",
-        "docs": "/docs",
-        "health": "/health",
+        "message": "Billionaire AI Data Service — Phase 2",
+        "docs":    "/docs",
+        "health":  "/health",
     }
 
-# ─── Placeholder route stubs (Phase 2 will implement these) ──────────────────
 
-@app.get("/market/quote")
-async def market_quote(ticker: str):
-    return {"message": f"Phase 2: will return live quote for {ticker}"}
+# ─── Cache status ─────────────────────────────────────────────────────────────
+@app.get("/cache/status")
+async def cache_status():
+    from utils.cache import cache
+    return {
+        "cached_entries": cache.size(),
+        "timestamp":      datetime.utcnow().isoformat() + "Z",
+    }
 
-@app.get("/market/indices")
-async def market_indices():
-    return {"message": "Phase 2: will return Nifty 50, Sensex, Bank Nifty"}
 
-@app.get("/market/history")
-async def market_history(ticker: str, period: str = "1mo", interval: str = "1d"):
-    return {"message": f"Phase 2: will return OHLCV history for {ticker}"}
+@app.delete("/cache/clear")
+async def cache_clear():
+    from utils.cache import cache
+    cache.clear()
+    return {"cleared": True, "timestamp": datetime.utcnow().isoformat() + "Z"}
 
-@app.get("/market/fundamentals")
-async def market_fundamentals(ticker: str):
-    return {"message": f"Phase 2: will return fundamentals for {ticker}"}
-
-@app.get("/nse/fii-dii")
-async def nse_fii_dii():
-    return {"message": "Phase 2: will return FII/DII data from NSE"}
-
-@app.get("/news/search")
-async def news_search(q: str):
-    return {"message": f"Phase 3: will return news articles for: {q}"}
-
-@app.get("/sentiment/reddit")
-async def sentiment_reddit(ticker: str):
-    return {"message": f"Phase 3: will return Reddit sentiment for {ticker}"}
-
-@app.get("/sentiment/trends")
-async def sentiment_trends(ticker: str):
-    return {"message": f"Phase 3: will return Google Trends data for {ticker}"}
 
 # ─── Run ──────────────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
     port = int(os.environ.get("PYTHON_SERVICE_PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
