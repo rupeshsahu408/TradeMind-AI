@@ -184,20 +184,24 @@ export const nseApi = {
   topMovers:    ()               => api.get<TopMoversData>('/nse/top-movers'),
   circuitStocks:()               => api.get('/nse/circuit-stocks'),
   sectors:      ()               => api.get<SectorsResponse>('/nse/sectors'),
+  bulkDeals:    ()               => api.get('/nse/bulk-deals'),
+  blockDeals:   ()               => api.get('/nse/block-deals'),
 };
 
 // ─── Technical ────────────────────────────────────────────────────────────────
 export const technicalApi = {
-  rsi:       (ticker: string, interval = 'daily', period = 14) =>
+  rsi:          (ticker: string, interval = 'daily', period = 14) =>
     api.get(`/technical/rsi?ticker=${encodeURIComponent(ticker)}&interval=${interval}&period=${period}`),
-  macd:      (ticker: string, interval = 'daily') =>
+  macd:         (ticker: string, interval = 'daily') =>
     api.get(`/technical/macd?ticker=${encodeURIComponent(ticker)}&interval=${interval}`),
-  bollinger: (ticker: string, interval = 'daily', period = 20) =>
+  bollinger:    (ticker: string, interval = 'daily', period = 20) =>
     api.get(`/technical/bollinger?ticker=${encodeURIComponent(ticker)}&interval=${interval}&period=${period}`),
-  ema:       (ticker: string, interval = 'daily', period = 20) =>
+  ema:          (ticker: string, interval = 'daily', period = 20) =>
     api.get(`/technical/ema?ticker=${encodeURIComponent(ticker)}&interval=${interval}&period=${period}`),
-  summary:   (ticker: string) =>
+  summary:      (ticker: string) =>
     api.get(`/technical/summary?ticker=${encodeURIComponent(ticker)}`),
+  candlestick:  (ticker: string, days = 14) =>
+    api.get(`/technical/candlestick?ticker=${encodeURIComponent(ticker)}&days=${days}`),
 };
 
 // ─── Screener ─────────────────────────────────────────────────────────────────

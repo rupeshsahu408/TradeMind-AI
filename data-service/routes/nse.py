@@ -339,3 +339,95 @@ async def nse_sectors():
     }
     cache.set(cache_key, result, ttl_seconds=300)
     return result
+
+
+# ─── Bulk Deals ────────────────────────────────────────────────────────────────
+
+@router.get("/bulk-deals")
+async def nse_bulk_deals():
+    """
+    Fetch NSE bulk deal transactions for the current trading day.
+    Bulk deals = single transactions >= 0.5% of listed shares.
+    """
+    cache_key = "nse:bulk_deals"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    raw = await nse_session.get(
+        "/api/snapshot-capital-market-transactions-data?type=bulk"
+    )
+
+    deals = []
+    if raw and isinstance(raw, dict):
+        data_list = raw.get("data", [])
+        if isinstance(data_list, list):
+            for item in data_list:
+                qty   = item.get("quantityTraded") or item.get("quantity_traded") or 0
+                price = item.get("tradePrice") or item.get("trade_price") or 0
+                deals.append({
+                    "symbol":      item.get("symbol", ""),
+                    "client_name": item.get("clientName") or item.get("client_name", ""),
+                    "trade_type":  (item.get("buySell") or item.get("buy_sell", "")).upper(),
+                    "quantity":    _safe_float(qty),
+                    "trade_price": _safe_float(price),
+                    "exchange":    item.get("market", "NSE"),
+                })
+
+    result = {
+        "deals":     deals[:50],
+        "total":     len(deals),
+        "source":    "NSE India",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+    if not deals:
+        result["note"] = "No bulk deals reported today or data unavailable outside market hours."
+
+    cache.set(cache_key, result, ttl_seconds=900)
+    return result
+
+
+# ─── Block Deals ───────────────────────────────────────────────────────────────
+
+@router.get("/block-deals")
+async def nse_block_deals():
+    """
+    Fetch NSE block deal transactions for the current trading day.
+    Block deals = negotiated trades on the block deal window (9:15–9:50 AM IST).
+    """
+    cache_key = "nse:block_deals"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    raw = await nse_session.get(
+        "/api/snapshot-capital-market-transactions-data?type=block"
+    )
+
+    deals = []
+    if raw and isinstance(raw, dict):
+        data_list = raw.get("data", [])
+        if isinstance(data_list, list):
+            for item in data_list:
+                qty   = item.get("quantityTraded") or item.get("quantity_traded") or 0
+                price = item.get("tradePrice") or item.get("trade_price") or 0
+                deals.append({
+                    "symbol":      item.get("symbol", ""),
+                    "client_name": item.get("clientName") or item.get("client_name", ""),
+                    "trade_type":  (item.get("buySell") or item.get("buy_sell", "")).upper(),
+                    "quantity":    _safe_float(qty),
+                    "trade_price": _safe_float(price),
+                    "exchange":    item.get("market", "NSE"),
+                })
+
+    result = {
+        "deals":     deals[:50],
+        "total":     len(deals),
+        "source":    "NSE India",
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+    if not deals:
+        result["note"] = "No block deals reported today or data unavailable outside block deal window."
+
+    cache.set(cache_key, result, ttl_seconds=900)
+    return result

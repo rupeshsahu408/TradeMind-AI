@@ -745,18 +745,20 @@ router.post('/briefing', async (req, res) => {
   try {
     sseSend(res, { type: 'fetching' });
 
-    const [indices, fiiDii, macro, news] = await Promise.allSettled([
+    const [indices, fiiDii, macro, news, topMovers] = await Promise.allSettled([
       pythonGet('/market/indices'),
       pythonGet('/nse/fii-dii'),
       pythonGet('/macro/snapshot'),
       pythonGet('/news/india-market?tag=false&limit=12'),
+      pythonGet('/nse/top-movers'),
     ]);
 
     const get = r => (r.status === 'fulfilled' ? r.value : null);
-    const idxData   = get(indices);
-    const fiiData   = get(fiiDii);
-    const macroData = get(macro);
-    const newsData  = get(news);
+    const idxData      = get(indices);
+    const fiiData      = get(fiiDii);
+    const macroData    = get(macro);
+    const newsData     = get(news);
+    const moversData   = get(topMovers);
 
     const dateStr = new Date().toLocaleDateString('en-IN', {
       weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
@@ -799,6 +801,21 @@ router.post('/briefing', async (req, res) => {
       prompt += `\n## Top Market Headlines\n${headlines}\n`;
     }
 
+    if (moversData?.gainers?.length) {
+      prompt += `\n## Today's Top Gainers\n`;
+      for (const s of moversData.gainers.slice(0, 6)) {
+        const pct = s.change_pct != null ? `${s.change_pct >= 0 ? '+' : ''}${Number(s.change_pct).toFixed(2)}%` : '';
+        prompt += `- ${s.ticker}${s.company ? ` (${s.company})` : ''}: ₹${s.price} ${pct}\n`;
+      }
+    }
+    if (moversData?.losers?.length) {
+      prompt += `\n## Today's Top Losers\n`;
+      for (const s of moversData.losers.slice(0, 6)) {
+        const pct = s.change_pct != null ? `${Number(s.change_pct).toFixed(2)}%` : '';
+        prompt += `- ${s.ticker}${s.company ? ` (${s.company})` : ''}: ₹${s.price} ${pct}\n`;
+      }
+    }
+
     prompt += `
 Generate a complete morning briefing covering these sections with markdown headers:
 
@@ -806,10 +823,23 @@ Generate a complete morning briefing covering these sections with markdown heade
 **Global Cues** — What happened in US/Asian markets overnight and what it signals for India
 **FII/DII Flows** — What institutional money is doing and what it means for today
 **Macro Watch** — Rupee, crude oil, and gold impact on specific Indian sectors
-**Stocks to Watch** — 4–5 specific stocks/sectors with brief reasoning and key levels
-**Key Risks Today** — What could derail the market (be specific, not generic)
 
-Speak like a senior trader delivering the morning desk briefing. Every sentence should carry information. No filler.`;
+**Top 10 Stock Picks** — List exactly 10 NSE-listed stocks. For each, use this exact block format:
+> **TICKER** | VERDICT: BUY / SELL / AVOID | CONVICTION: XX%
+> Target: +XX% | Stop Loss: -XX%
+> _Reason: 2-sentence data-driven reasoning. Cite specific signals — RSI zone, FII/DII flow direction, sector trend, news catalyst, or technical level._
+
+Rules for the 10 picks:
+- Cover at least 5 different sectors (Banking, IT, Pharma, Auto, FMCG, Energy, Metal, Infra, etc.)
+- No more than 2 picks from the same sector
+- Conviction % must reflect signal quality: 85%+ only when 4+ signals align
+- Express Target and Stop Loss as % moves from current price (not absolute prices)
+- AVOID picks must state the specific risk or event to wait out
+- If today's gainers/losers data is provided above, use those stocks as context — they show where money is moving
+
+**Key Risks Today** — Exactly 3 specific risks that could derail today's market (no generic statements like "global uncertainty")
+
+Speak like a senior fund manager giving the morning desk briefing. Every sentence must carry actionable information. No filler. No hedging on the picks.`;
 
     sseSend(res, { type: 'stream_start' });
 

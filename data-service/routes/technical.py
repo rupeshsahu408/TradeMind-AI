@@ -357,3 +357,157 @@ async def technical_summary(
 
     cache.set(cache_key, result, ttl_seconds=3600)
     return result
+
+
+# ─── Candlestick Pattern Detection ────────────────────────────────────────────
+
+@router.get("/candlestick")
+async def technical_candlestick(
+    ticker: str = Query(..., description="NSE ticker e.g. RELIANCE.NS"),
+    days:   int = Query(14, ge=5, le=30, description="Days of history to scan"),
+):
+    """
+    Detect candlestick patterns from recent OHLCV data via Yahoo Finance.
+    Zero Alpha Vantage quota usage.
+    Detects: Doji, Hammer, Shooting Star, Bullish/Bearish Engulfing, Morning/Evening Star.
+    """
+    cache_key = f"candlestick:{ticker}:{days}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    from utils.yf_direct import get_history
+
+    yf_ticker = ticker if "." in ticker else f"{ticker}.NS"
+    candles = await get_history(yf_ticker, period="1mo", interval="1d")
+
+    if not candles or len(candles) < 3:
+        result = {
+            "ticker":            ticker,
+            "patterns_detected": 0,
+            "patterns":          [],
+            "latest_pattern":    None,
+            "signal":            "neutral",
+            "interpretation":    "Insufficient price history for pattern detection.",
+            "timestamp":         datetime.utcnow().isoformat() + "Z",
+        }
+        cache.set(cache_key, result, ttl_seconds=3600)
+        return result
+
+    candles = candles[-days:]
+
+    def body(c):
+        return abs(c["close"] - c["open"])
+
+    def upper_wick(c):
+        return c["high"] - max(c["open"], c["close"])
+
+    def lower_wick(c):
+        return min(c["open"], c["close"]) - c["low"]
+
+    def rng(c):
+        r = c["high"] - c["low"]
+        return r if r > 0 else 0.0001
+
+    patterns = []
+
+    for i in range(len(candles)):
+        c      = candles[i]
+        b      = body(c)
+        uw     = upper_wick(c)
+        lw     = lower_wick(c)
+        r      = rng(c)
+        is_bull = c["close"] >= c["open"]
+        label = signal = description = None
+
+        # Doji
+        if b / r < 0.10:
+            label       = "Doji"
+            signal      = "neutral"
+            description = "Indecision candle — bulls and bears in equilibrium. Watch next session for directional confirmation."
+
+        # Hammer (bullish reversal)
+        elif lw >= 2 * b and uw <= 0.4 * b and lw >= 0.55 * r:
+            label       = "Bullish Hammer" if is_bull else "Hammer"
+            signal      = "bullish"
+            description = "Long lower shadow — sellers tried to push price down but buyers overwhelmed them. Potential bottom reversal."
+
+        # Shooting Star (bearish reversal)
+        elif uw >= 2 * b and lw <= 0.4 * b and uw >= 0.55 * r:
+            label       = "Shooting Star"
+            signal      = "bearish"
+            description = "Long upper wick — price rallied sharply but bears reclaimed control by close. Bearish reversal signal."
+
+        # Engulfing patterns
+        elif i > 0:
+            prev   = candles[i - 1]
+            pb     = body(prev)
+            p_bull = prev["close"] >= prev["open"]
+
+            if (is_bull and not p_bull and
+                    c["open"] <= prev["close"] and c["close"] >= prev["open"] and b >= pb * 0.85):
+                label       = "Bullish Engulfing"
+                signal      = "bullish"
+                description = "Current bullish candle fully engulfs prior bearish candle. Strong reversal — institutional accumulation likely."
+
+            elif (not is_bull and p_bull and
+                    c["open"] >= prev["close"] and c["close"] <= prev["open"] and b >= pb * 0.85):
+                label       = "Bearish Engulfing"
+                signal      = "bearish"
+                description = "Current bearish candle fully engulfs prior bullish candle. Distribution signal — consider reducing longs."
+
+        # Morning / Evening Star (3-candle, checked after single-candle patterns)
+        if label is None and i >= 2:
+            c0, c1, c2 = candles[i - 2], candles[i - 1], c
+            c1b = body(c1)
+
+            if (c0["close"] < c0["open"] and
+                    c1b < rng(c1) * 0.35 and
+                    c2["close"] > c2["open"] and
+                    c2["close"] > (c0["open"] + c0["close"]) / 2):
+                label       = "Morning Star"
+                signal      = "bullish"
+                description = "Three-candle bullish reversal: bearish day → indecision star → strong bullish close. High-probability buy setup after downtrend."
+
+            elif (c0["close"] > c0["open"] and
+                    c1b < rng(c1) * 0.35 and
+                    c2["close"] < c2["open"] and
+                    c2["close"] < (c0["open"] + c0["close"]) / 2):
+                label       = "Evening Star"
+                signal      = "bearish"
+                description = "Three-candle bearish reversal: bullish day → indecision star → sharp bearish close. Potential top — reduce longs."
+
+        if label and signal and description:
+            date_key = str(c.get("date") or c.get("time", ""))[:10]
+            patterns.append({
+                "date":        date_key,
+                "pattern":     label,
+                "signal":      signal,
+                "open":        round(float(c["open"]), 2),
+                "high":        round(float(c["high"]), 2),
+                "low":         round(float(c["low"]), 2),
+                "close":       round(float(c["close"]), 2),
+                "description": description,
+            })
+
+    latest   = patterns[-1] if patterns else None
+    recent   = patterns[-3:] if len(patterns) >= 3 else patterns
+    bull_cnt = sum(1 for p in recent if p["signal"] == "bullish")
+    bear_cnt = sum(1 for p in recent if p["signal"] == "bearish")
+    overall  = ("bullish" if bull_cnt > bear_cnt
+                else "bearish" if bear_cnt > bull_cnt else "neutral")
+
+    result = {
+        "ticker":            ticker,
+        "patterns_detected": len(patterns),
+        "patterns":          patterns[-5:],
+        "latest_pattern":    latest,
+        "signal":            overall,
+        "interpretation": (
+            latest["description"] if latest
+            else "No clear candlestick pattern detected in recent sessions."
+        ),
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+    cache.set(cache_key, result, ttl_seconds=3600)
+    return result

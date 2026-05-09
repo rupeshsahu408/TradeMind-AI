@@ -1,0 +1,80 @@
+🚀 PROJECT: BILLIONAIRE AI — Indian Stock Market Trading Assistant
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📌 WHAT WE ARE BUILDING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+A personal AI-powered trading assistant built specifically for Indian markets (NSE/BSE). It works like a senior proprietary trader — researching 15+ data sources simultaneously, analyzing charts, reading global news, tracking sentiment across Reddit/X/Instagram/Facebook, and delivering confident, probability-based stock predictions with full reasoning and verified sources.
+
+Language support: Hindi + English (Hinglish)
+Platform: Web app (SaaS-level quality)
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 CORE FUNCTIONALITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The AI must:
+
+1. Every morning before 9:15 AM — auto-generate a "Morning Brief" with top 10 stocks to watch, each with:
+   - BUY / SELL / AVOID verdict
+   - Probability % (e.g. 82% chance of rising)
+   - Target price + Stop Loss
+   - Exact reasons with verified sources
+   - Chart analysis summary
+
+2. On-demand Stock Deep Dive — user types any stock name and gets:
+   - Full technical analysis (RSI, MACD, Bollinger Bands, EMA, support/resistance, candlestick patterns)
+   - Fundamental analysis (P/E, earnings, promoter activity)
+   - News sentiment from 10+ sources
+   - Social sentiment (Reddit, X, Google Trends, YouTube)
+   - Global macro impact (US Fed, crude oil, China PMI, USD/INR)
+   - FII/DII institutional flow data
+   - Signal Stack score — how many independent signals agree
+   - Final verdict with confidence level
+
+3. AI Chat — user can ask anything in Hindi or English:
+   - "Aaj Reliance loon?"
+   - "Top 5 stocks for tomorrow?"
+   - "Nifty aaj kaisa rahega?"
+   AI responds like an experienced trader — calm, precise, data-driven
+
+4. Global Impact Tracker — real-time monitoring of world events and their direct effect on Indian sectors
+
+5. Accuracy Tracker — logs every prediction, checks outcome next day, builds trust over time
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 DATA SOURCES (All Free)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Market: yfinance, NSE scraping, Alpha Vantage, Screener.in, Investing.com
+News: NewsAPI, Economic Times RSS, Moneycontrol RSS, LiveMint RSS
+Social: Reddit (PRAW), X/Twitter scraping, Google Trends (pytrends), YouTube API
+Macro: RBI website, SEBI bulk deals, Yahoo Finance global indices
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎨 AI PERSONALITY (NON-NEGOTIABLE)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The AI speaks like a senior proprietary trader with 20 years of experience.
+
+❌ NEVER: "Great question! I'd be happy to help..."
+✅ ALWAYS: "HDFC Bank RSI sits at 71 — overbought territory. Caution."
+
+❌ NEVER: "This stock looks amazing and could skyrocket!"
+✅ ALWAYS: "Setup is clean. FII buying supports the move. 76% conviction."
+
+Hindi mode = natural Hinglish:
+✅ "RSI 68 pe hai — overbought ke paas. Thoda wait karo."
+
+Every AI response MUST stream (word by word). No buffering.
+Show animated status while fetching: "Pulling live market data..." → "Checking FII flows..." → "Evaluating signal stack..."
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
+

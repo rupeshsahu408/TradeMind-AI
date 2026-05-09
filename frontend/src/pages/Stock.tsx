@@ -78,17 +78,37 @@ interface EarningsRow {
   source: string;
 }
 
+interface BollingerRow {
+  upper_band:     number;
+  middle_band:    number;
+  lower_band:     number;
+  bandwidth_pct:  number;
+  interpretation: string;
+  error?:         string;
+}
+
+interface CandlestickRow {
+  patterns_detected: number;
+  patterns:          Array<{ date: string; pattern: string; signal: string; description: string }>;
+  latest_pattern:    { date: string; pattern: string; signal: string; description: string } | null;
+  signal:            string;
+  interpretation:    string;
+  error?:            string;
+}
+
 interface StockPageData {
-  quote: QuoteRow | null;
+  quote:        QuoteRow | null;
   fundamentals: FundRow | null;
-  technical: TechRow | null;
-  news: NewsRow[];
-  options: OptionsRow | null;
-  fiiDii: FiiRow | null;
-  reddit: RedditRow | null;
-  trends: TrendsRow | null;
-  youtube: YouTubeRow | null;
-  earnings: EarningsRow | null;
+  technical:    TechRow | null;
+  news:         NewsRow[];
+  options:      OptionsRow | null;
+  fiiDii:       FiiRow | null;
+  reddit:       RedditRow | null;
+  trends:       TrendsRow | null;
+  youtube:      YouTubeRow | null;
+  earnings:     EarningsRow | null;
+  bollinger:    BollingerRow | null;
+  candlestick:  CandlestickRow | null;
 }
 
 // ─── Chart periods ────────────────────────────────────────────────────────────
@@ -418,8 +438,9 @@ function PriceChart({ ticker }: { ticker: string }) {
 
 // ─── Technical Card ───────────────────────────────────────────────────────────
 
-function TechnicalCard({ tech, quote, fund }: {
+function TechnicalCard({ tech, quote, fund, bollinger, candlestick }: {
   tech: TechRow | null; quote: QuoteRow | null; fund: FundRow | null;
+  bollinger: BollingerRow | null; candlestick: CandlestickRow | null;
 }) {
   if (!tech) return (
     <Card title="Technical Indicators" icon={Activity}>
@@ -536,6 +557,76 @@ function TechnicalCard({ tech, quote, fund }: {
               ))}
             </div>
             <p className="text-[10px] text-muted-foreground mt-1.5 leading-snug">{macd.interpretation}</p>
+          </div>
+        )}
+
+        {/* Bollinger Bands */}
+        {bollinger && !bollinger.error && bollinger.upper_band > 0 && (
+          <div className="pt-2 border-t border-border/50">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Bollinger Bands (20)
+              </p>
+              <span className={cn(
+                'text-[10px] font-bold px-2 py-0.5 rounded-full',
+                bollinger.bandwidth_pct > 10
+                  ? 'bg-amber-500/10 text-amber-500'
+                  : 'bg-primary/10 text-primary',
+              )}>
+                {bollinger.bandwidth_pct > 10 ? 'HIGH VOL' : 'SQUEEZE'}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {([
+                { label: 'Upper',  value: bollinger.upper_band,  color: 'text-bear' },
+                { label: 'Middle', value: bollinger.middle_band, color: 'text-foreground' },
+                { label: 'Lower',  value: bollinger.lower_band,  color: 'text-bull' },
+              ] as const).map(({ label, value, color }) => (
+                <div key={label} className="text-center py-2 px-1 bg-secondary/40 rounded-md">
+                  <p className="text-[9px] text-muted-foreground mb-0.5">{label}</p>
+                  <p className={cn('text-[11px] font-mono font-semibold', color)}>
+                    ₹{fmt(value, 0)}
+                  </p>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground mt-1.5 leading-snug">
+              Bandwidth: {bollinger.bandwidth_pct.toFixed(1)}% ·{' '}
+              {bollinger.bandwidth_pct > 10
+                ? 'Wide bands — elevated volatility, trend is established.'
+                : 'Narrow bands (squeeze) — breakout may be imminent.'}
+            </p>
+          </div>
+        )}
+
+        {/* Candlestick Pattern */}
+        {candlestick && candlestick.latest_pattern && (
+          <div className="pt-2 border-t border-border/50">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Candlestick Pattern
+              </p>
+              <span className={cn(
+                'text-[10px] font-bold px-2 py-0.5 rounded-full',
+                candlestick.latest_pattern.signal === 'bullish' ? 'bg-bull/10 text-bull'
+                : candlestick.latest_pattern.signal === 'bearish' ? 'bg-bear/10 text-bear'
+                : 'bg-muted text-muted-foreground',
+              )}>
+                {candlestick.latest_pattern.signal.toUpperCase()}
+              </span>
+            </div>
+            <div className="py-2.5 px-3 rounded-lg bg-secondary/50 border border-border/50">
+              <p className="text-xs font-semibold text-foreground">
+                {candlestick.latest_pattern.pattern}
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                {candlestick.latest_pattern.description}
+              </p>
+              <p className="text-[9px] text-muted-foreground/60 mt-1.5">
+                Detected: {candlestick.latest_pattern.date}
+                {candlestick.patterns_detected > 1 && ` · ${candlestick.patterns_detected} patterns in last 14 sessions`}
+              </p>
+            </div>
           </div>
         )}
 
@@ -1143,6 +1234,7 @@ export default function Stock() {
         quote, fundamentals: fund,
         technical: null, news: [], options: null, fiiDii: null,
         reddit: null, trends: null, youtube: null, earnings: null,
+        bollinger: null, candlestick: null,
       });
 
       // Build the best possible news query using company name
@@ -1154,7 +1246,7 @@ export default function Stock() {
         .trim();
 
       // ── Phase 2: All remaining data in parallel, with smart news query ──
-      const [rTech, rNews, rOpts, rFii, rReddit, rTrends, rYoutube, rEarnings] =
+      const [rTech, rNews, rOpts, rFii, rReddit, rTrends, rYoutube, rEarnings, rBollinger, rCandlestick] =
         await Promise.allSettled([
           technicalApi.summary(ns),
           newsApi.search(newsQuery, 72, true),
@@ -1164,6 +1256,8 @@ export default function Stock() {
           sentimentApi.trends(sym, 7),
           sentimentApi.youtube(sym, 3),
           marketApi.earnings(ns),
+          technicalApi.bollinger(ns),
+          technicalApi.candlestick(ns),
         ]);
 
       const g = <T,>(r: PromiseSettledResult<T>): T | null =>
@@ -1172,14 +1266,16 @@ export default function Stock() {
       setStockData({
         quote,
         fundamentals: fund,
-        technical:    g(rTech)    as TechRow    | null,
-        news:         ((g(rNews)  as unknown as { articles?: NewsRow[] })?.articles ?? []),
-        options:      g(rOpts)    as OptionsRow | null,
-        fiiDii:       g(rFii)     as FiiRow     | null,
-        reddit:       g(rReddit)  as RedditRow  | null,
-        trends:       g(rTrends)  as TrendsRow  | null,
-        youtube:      g(rYoutube) as YouTubeRow | null,
-        earnings:     g(rEarnings) as EarningsRow | null,
+        technical:    g(rTech)        as TechRow        | null,
+        news:         ((g(rNews)      as unknown as { articles?: NewsRow[] })?.articles ?? []),
+        options:      g(rOpts)        as OptionsRow      | null,
+        fiiDii:       g(rFii)         as FiiRow          | null,
+        reddit:       g(rReddit)      as RedditRow       | null,
+        trends:       g(rTrends)      as TrendsRow       | null,
+        youtube:      g(rYoutube)     as YouTubeRow      | null,
+        earnings:     g(rEarnings)    as EarningsRow     | null,
+        bollinger:    g(rBollinger)   as BollingerRow    | null,
+        candlestick:  g(rCandlestick) as CandlestickRow  | null,
       });
     } finally {
       setDataLoading(false);
@@ -1366,6 +1462,8 @@ export default function Stock() {
                   tech={stockData?.technical ?? null}
                   quote={stockData?.quote ?? null}
                   fund={stockData?.fundamentals ?? null}
+                  bollinger={stockData?.bollinger ?? null}
+                  candlestick={stockData?.candlestick ?? null}
                 />
               )}
               {dataLoading && !stockData?.fundamentals ? (
