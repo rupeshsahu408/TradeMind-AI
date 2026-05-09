@@ -5,7 +5,8 @@ const cors = require('cors');
 const { testConnection } = require('./db/index');
 
 const app = express();
-const PORT = process.env.BACKEND_PORT || 3001;
+// Render injects PORT automatically. Fall back to BACKEND_PORT for local dev.
+const PORT = process.env.PORT || process.env.BACKEND_PORT || 3001;
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
 app.use(cors({
@@ -13,6 +14,7 @@ app.use(cors({
     'http://localhost:5000',
     'http://localhost:5173',
     /\.vercel\.app$/,
+    /\.onrender\.com$/,
     /\.replit\.app$/,
     /\.replit\.dev$/,
   ],
