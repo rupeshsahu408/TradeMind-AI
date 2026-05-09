@@ -4,9 +4,19 @@
 
 A personal AI-powered trading assistant for Indian markets (NSE/BSE). Performs deep multi-source research, analyzes market data, and delivers probability-based stock predictions with full reasoning and verified sources.
 
-## Architecture
+## Deployment (Production)
 
-Three services run concurrently:
+| Service | Host | URL |
+|---------|------|-----|
+| Frontend | Vercel | https://billionaire-ai-ruby.vercel.app |
+| Backend API | Render | https://trademind-ai-rc6v.onrender.com |
+| Data Service | Render | https://billionaire-ai-data-service.onrender.com |
+
+Replit is the **development environment only**. Code is written and tested here, then deployed to the above production URLs.
+
+## Local Development Architecture
+
+Three services run concurrently in Replit:
 
 | Service | Port | Tech | Purpose |
 |---------|------|------|---------|
